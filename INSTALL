@@ -1,0 +1,8 @@
+The libredo code is written entirely in portable C, so I haven't
+bothered with creating a ./configure script. The Makefile assumes a
+Unix build environment; if you are building for some other target, you
+may need to provide your own build instructions. Finally, please note
+that the demonstration program, sokoban-example.c, does depend on the
+ncurses library. If you don't have the ncurses development package
+installed, you can just run "make test" to just build libredo.a and
+run the unit tests.

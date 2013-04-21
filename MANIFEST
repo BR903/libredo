@@ -1,0 +1,10 @@
+COPYING
+Documentation.txt
+INSTALL
+MANIFEST
+Makefile
+README
+redo-tests.c
+redo.c
+redo.h
+sokoban-example.c
