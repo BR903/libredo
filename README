@@ -1,0 +1,32 @@
+libredo is a simple library that makes it easy to add powerful undo
+and redo commands to a logic puzzle game (or similar type of program).
+Many such programs that provide undo and redo commands will remember
+undone states only while a user is using these two commands. Once the
+user uses some other command that changes state in a new way, all of
+the undone states are forgotten. This limited functionality is common,
+if not ubiquitous. I would like to see more programs offer something
+better: that is what this library is provided for.
+
+The file Documentation.txt describes what libredo can do and how the
+API is used. There is also an example program included
+(sokoban-example) which provides a demonstration of the API's
+capabilities and how to use it.
+
+These programs are copyright (C) 2013 by Brian Raiter. These programs
+are free software; you can redistribute them and/or modify them under
+the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 2 of the License, or (at your
+option) any later version. These programs are distributed in the hope
+that they will be useful, but WITHOUT ANY WARRANTY; without even the
+implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE. See the GNU General Public License, included in this
+distribution in the file COPYING, for more details.
+
+Bug reports and general feedback should be directed to the author at
+<breadbox@muppetlabs.com>.
+
+Happy coding.
+
+
+Brian Raiter
+<http://www.muppetlabs.com/~breadbox/software/libredo.html>

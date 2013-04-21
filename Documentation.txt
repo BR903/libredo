@@ -1,0 +1,493 @@
+CONTENTS
+
+1. What is libredo?
+2. Candidates for libredo
+3. Use cases
+4. The redo API
+  4.1. structs
+  4.2. functions
+
+
+1. WHAT IS LIBREDO?
+
+libredo is a small library that provides support for adding advanced
+undo and redo commands to a program. Unlike the typical undo/redo
+functionality, which only remembers a single linear sequenc, libredo
+is designed to manage a complete history of user actions. The idea is
+to allow users to navigate around this history, to alert them when
+they move into already-explored territory, and to automatically detect
+when existing subsequences have been improved upon.
+
+
+2. CANDIDATES FOR LIBREDO
+
+libredo is particularly designed to be used with a certain type of
+logic puzzle. Logic puzzles typically involves altering or rearranging
+elements of a system. There are certain features that most such
+puzzles share:
+
+* There is a well-defined initial state, and one or more solution
+  states.
+
+* The main challenge is simply to solve the puzzle. But after that is
+  achieved, there is invariably a secondary challenge of trying to
+  solve it in fewer moves. (A logic puzzle in which there is only one
+  unique set of moves needed to solve it would therefore be a poor
+  candidate for libredo.)
+  
+* There is no hidden information, or at least nothing of real
+  significance, which would otherwise be spoiled by providing an
+  undo/redo facility. (For example Klondike would not be a good
+  candidate, but a solitaire game that has all cards face-up at the
+  start might be.)
+
+* There are not a huge number of different moves available to the
+  player. In particular, this excludes games that depend on reaction
+  times, since then timing becomes a necessary aspect of the move.
+  (These are the kinds of games that wouldn't have undo and redo
+  functionality anyway.)
+
+* The complete state of the system can typically be encoded in a
+  relatively small amount of space, making it feasible to maintain an
+  unabridged move history.
+
+Sokoban is a good example of a program that has all of these features.
+There are only four possible moves, for example. And the complete
+state of a game in progress can be encoded by recording the position
+of every moveable object. The exact size would differ for each level,
+but rare is the Sokoban level that would need 100 bytes or more.
+Freecell is another example: There are 192 different moves -- 12
+sources times 16 destinations -- but at many points in a game there
+are frequently less than 50 legal moves. And since 19 is the largest
+number of cards that a column can grow to, a single byte is sufficient
+to identify a card's location, allowing the complete state to be
+described in 52 bytes. (On the other hand, Freecell would ultimately
+not be a good candidate, as Freecell games are generally not logically
+complex enough to warrant an advanced undo/redo facility.)
+
+Many programs that provide undo and redo commands will remember undone
+states only while the user is using these two commands. Once the user
+uses some other command that changes state in a new way, all of the
+undone states are discarded. This limited functionality is common, if
+not ubiquitous. I would like to see more such programs offer something
+better. Thus, this library.
+
+
+3. USE CASES
+
+What libredo does is assist in organizing and remembering a complete
+history of visited states. After undo is used to return to a previous
+state, the user can make other changes without losing any history.
+Then, if undo is used to return to the branch point a second time,
+both sequences will be available for redoing. The user's history is no
+longer linear; instead it takes the form of a tree, rooted at the
+initial state and bifurcating.
+
+An important feature of libredo is that it will automatically detect
+when a state is rediscovered via a completely different sequence of
+moves. Typically there can be any number of ways to get to a single
+state. In order to avoid making it impossible for users to navigate
+around, however, libredo requires the move history to maintain a
+strict tree structure. Each position in the history is thus defined by
+the moves required to reach it. The fact that two sets of moves can
+lead to the same state is managed by an extra set of pointers. Every
+position in the tree has a field named "better". If it is set, then it
+points to a position that has an identical state, but can be reached
+in fewer moves.
+
+Whenever a position is added to the move history whose state matches
+that of an already existing position, libredo sets the better pointer
+on the position with the longer move path. In addition, if the newer
+position is the one with the shorter moves, libredo will also transfer
+the subsequent portion of the move history away from the longer path
+to the new, shorter path.
+
+In order to provide concrete examples, consider this simple move
+history:
+
+  start ___ right: pos #1 __ right: pos #4
+      |                 |___ down: pos #5
+      |____ left: pos #2
+      |____ down: pos #3 ___ right: pos #6 __ down: pos #7 ___ down: pos #8
+                                          |__ left: pos #9
+
+Lines show the branches that connect each position. Each position is
+prefixed by the move used to reach it. A total of ten states have been
+visited, if we include the starting state.
+
+Imagine that the user, while at pos #5, executes a "left" command.
+This creates a new position that will be added as a branch from pos
+#5. Let's say that, in this case, moving right-down-left from the
+starting position has the same effect as just moving down. So, this
+new position's state will be identical to the one at pos #3:
+
+  start ___ right: pos #1 __ right: pos #4
+      |                 |___ down: pos #5 ___ left: pos #8 [#3]
+      |____ left: pos #2
+      |____ down: pos #3 ___ right: pos #6 __ down: pos #7 ___ down: pos #8
+                                          |__ left: pos #9
+
+The move will still have its own position, but its better field will
+point to position #3 (as shown in brackets). The program can use this
+to indicate to the user that they have moved into a previously
+explored state.
+
+Now the user returns to the start and executes the "up" command. In
+this imaginary scenario, it so happens that moving up from the start
+has the same effect as moving down-right, so this new position will
+have the same state as that of pos #6. Same situation as before,
+except now it is the newer position that provides the preferable,
+shorter path. So this time, not only will the older pos #6 have its
+better field updated, but libredo will also move its subtree over to
+the new position:
+
+  start ___ right: pos #1 __ right: pos #4
+      |                 |___ down: pos #5 ___ left: pos #8 [#3]
+      |____ left: pos #2
+      |____ down: pos #3 ___ right: pos #6 [#10]
+      |____ up: pos #10 ____ down: pos #7 ___ down: pos #8
+                      |_____ left: pos #9
+
+The user can then continue from there, with the shorter prefix having
+been substituted into all of their previous explorations. Pos #6
+remains in the move history as a leaf node, with its better field
+pointing to its replacement.
+
+Note: the above description assumes that grafting behavior is enabled
+in the session. See redo_addposition() below for a description of all
+available grafting behaviors.
+
+
+4. THE REDO API
+
+This section documents the API in detail.
+
+
+4.1. THE REDO API: STRUCTS
+
+There are two structs that are used to define the libredo move
+history. (A third struct, redo_session, is opaque to the calling
+program.)
+
+4.1.1. redo_position
+
+The central data structure of libredo is the redo_position struct.
+Each redo_position marks a position in the user's history tree: a
+state that can be reached by a specific sequence of moves. Most of the
+fields in the redo_position struct are provided specifically for the
+caller to access. (But note that in general callers shouldn't modify
+the values except through the API.)
+
+Here is a description of the fields in the redo_position struct:
+
+    redo_position *prev;
+
+This is the position's "parent node" in the user's history tree, i.e.
+the one that was moved from to reach this position. The initial
+position has a prev value of NULL; all other positions must have a
+valid pointer to the position immediately preceding it.
+
+    redo_branch *next;
+
+This field points to a linked list of branches, i.e. moves away from
+this position. See the discussion of the redo_branch struct below for
+details about this list. It is NULL if there are no moves originating
+from this position. The list is ordered by recency of usage; thus, the
+first branch in the list is the branch that was most recently created
+or accessed (see redo_getnextposition() below).
+
+These two fields, prev and next, create the tree structure of the
+session's move history.
+
+    unsigned short nextcount;
+
+This field gives the length of the linked list of branches.
+
+    unsigned short movecount;
+
+This field holds the number of moves that were used to reach this
+position. In other words, it is the length of the path from the
+initial position to to this position.
+
+    redo_position *better;
+
+If this field is not NULL, then it points to another position that
+leads to the identical game state as this position, but in fewer
+moves.
+
+    unsigned short endpoint;
+
+This field is true if the position is a solution state. (This field
+is set by the argument to redo_addposition().)
+
+    unsigned short solutionsize;
+
+If a path to any valid solution passes through this position, then
+this field will store the length of that path. If more than one
+solution is reachable from this position, it will hold the length of
+the shortest path. A value of zero indicates no solution is reachable
+from this position. (Or at least not yet.)
+
+Every redo_position also has an associated state buffer, which is not
+stored in the struct itself. See redo_getsavedstate() below.
+
+4.1.2. redo_branch
+
+redo_branch is a very simple struct that defines a branch connecting
+one position to another via a single move. Every position has zero or
+more branches leading out of it to other positions. The redo_branch
+fields are as follows:
+
+    int move;
+
+This is the move that labels the branch. The value of move is not
+constrained by libredo (other than that different moves must be
+represented by different values).
+
+    redo_position *p;
+
+This is the position that the move leads to, i.e. the branch's end
+point.
+
+    redo_branch *cdr;
+
+Branches are stored as a linked list; this field provides the link.
+(The name "cdr" refers to the traditional Lisp function for moving
+down a linked list. It was selected because the more common name
+"next" would invite confusion with the "next" field in redo_position.)
+
+
+4.2. THE REDO API: FUNCTIONS
+
+Here is a description of the functions that libredo provides.
+
+4.2.1. redo_beginsession()
+
+    redo_session *redo_beginsession(void const *initialstate,
+                                    int size);
+
+redo_beginsession() creates a new move history. The return value is a
+pointer to the session. Most of the other API functions require this
+value as their first argument.
+
+initialstate is a pointer to a buffer that contains a representation
+of the starting position. This position will become the root of the
+tree representing the move history.
+
+size is the number of bytes in the state representation. Note that all
+states are required to be the same size.
+
+4.2.2. redo_endsession()
+
+    void redo_endsession(redo_session *session);
+
+Call redo_endession() to destroy the session and deallocate all memory
+libredo has associated with the move history.
+
+4.2.3. redo_getfirstposition()
+
+    redo_position *redo_getfirstposition(redo_session const *session);
+
+This function returns the initial position in the move history, that
+was created in the call to redo_beginsession().
+
+4.2.4. redo_addposition()
+
+    redo_position *redo_addposition(redo_session *session,
+                                    redo_position *prev,
+                                    int move,
+                                    void const *state,
+                                    int endpoint,
+                                    int checkequiv);
+
+redo_addposition() is how every position (after the first one) is
+added to the move history. As with most functions, the first argument
+identifies the session that is being added to.
+
+prev and move identify the position being moved from and the move
+being made. If the given move has already been added to prev, then
+redo_addposition() will not create a new position but will simply
+return the existing one. (Since it is of course not possible to have
+two positions associated with the same sequence of moves.)
+
+state points to a buffer than contains the representation of the new
+position's state. libredo will keep its own copy of the buffer's
+contents; the caller may reuse the buffer after redo_addposition()
+returns. (Note, by the way, that if redo_addposition() finds an
+existing position, it does not check that the existing position's
+state is identical to the one passed in. It is the caller's
+responsibility to encode the state in a consistent fashion.)
+
+A true value for endpoint indicates that the new position should be
+considered a valid solution state. This causes the solutionsize field
+in redo_position (see above) to be set -- not just in the returned
+position but potentially in all positions along the path to the
+solution.
+
+The checkequiv argument can take one of three values. Its typical
+value is redo_check. This tells libredo to check for other states in
+the move history with the same state as this one. A value of
+redo_nocheck will suppress this check. Finally, a value of
+redo_checklater will temporarily avoid the check, scheduling it for
+the next call to redo_setbetterfields() (see below).
+
+If the check is performed and redo_addposition() finds another
+position with the same state but with a smaller movecount, it will set
+the better field on the returned redo_position to point to it. On the
+other hand, if a position with the same state is found but it is the
+new position that has the smaller movecount, then the older position
+will have its better field updated to point to the new position. In
+addition, the other position's subtree might be grafted to the new
+position, depending on the current grafting behavior. See
+redo_setgraftbehavior() below for more details.
+
+4.2.5. redo_setgraftbehavior()
+
+    int redo_setgraftbehavior(redo_session *session,
+                              int grafting);
+
+redo_setgraftvalue() changes the grafting behavior of
+redo_addposition().
+
+When a position is added that has the same state as an already
+existing position but with a smaller movecount, there are four
+possible actions that libredo can take, depending on the current
+grafting behavior:
+
+The redo_nograft behavior is to do nothing, beyond setting the
+better field appropriately.
+
+The redo_copypath behavior is to copy the shortest solution path in
+the older position's subtree over to the new position. (If no solution
+path exists from the older position, then this behavior is the same as
+redo_nograft's.)
+
+The redo_graft behavior is to transfer the entire subtree currently
+rooted at the older position over to the new position. The older
+position thus becomes a leaf node, and any solutions that the subtree
+contains will inherit the improvement in size. This is the default
+behavior.
+
+The redo_graftandcopy behavior is to graft the subtree, as with
+redo_graft, but to then copy the shortest solution back to the older
+position, so that it is not left as a leaf node. (Again, if no
+solution exists in the grafted subtree then this behavior is the same
+as redo_graft's.)
+
+The return value is the option's previous value.
+
+4.2.6. redo_getsavedstate()
+
+    void const *redo_getsavedstate(redo_position const *position);
+
+This function returns a pointer to libredo's copy of the state
+associated with the given position. (It should go without saying that
+the contents of this buffer should not be altered in any way.)
+
+4.2.7. redo_getnextposition()
+
+    redo_position *redo_getnextposition(redo_position const *position,
+                                        int move);
+
+This function traverses a branch in the move history's tree, starting
+from one position and following the branch labeled with a particular
+move to another position, which is the return value. This function
+also has the effect of causing the requested branch to be moved to the
+front of the linked list (in the parent position). NULL is returned
+if no such branch exists at this position.
+
+4.2.8. redo_dropposition()
+
+    redo_position *redo_dropposition(redo_session *session,
+                                     redo_position *position);
+
+This function deletes a position from the move history. In order for a
+position to be removed, it must not have any branches to other
+positions. The return value is the position's parent if the deletion
+was successful. If the deletion was not permitted, the return value is
+the original position, unchanged.
+
+4.2.9. redo_setbetterfields()
+
+    int redo_setbetterfields(redo_session *session);
+
+redo_setbetterfields() acts on every position in the session that was
+added with redo_checklater for the final parameter to
+redo_addposition(). Every such position has its better field correctly
+initialized, as redo_addposition() would have done with redo_check.
+Note, however, that no grafting will occur: this function does not
+change the move history other than to initialize better fields.
+
+The main use case for this function, and the redo_checklater option of
+redo_addposition(), is recreating a move history from an earlier
+session, as from a data file. Without this feature, a new session
+would have either to create positions in the exact order that they
+were created originally (in order to avoid inappropriate grafting from
+altering the session), or else record and recreate all better pointers
+manually. This feature allows the old session to just record a flag
+indicating which positions have non-NULL better fields. When
+recreating the session, positions are added with either redo_nocheck
+or redo_checklater depending on the flag value, and then
+redo_setbetterfields() is called once the entire move history is in
+memory.
+
+4.2.10. redo_suppresscycle()
+
+    int redo_suppresscycle(redo_session *session,
+                           redo_position **pposition,
+                           void const *state,
+                           int prunelimit);
+
+redo_suppresscycle() looks for matching states along a path. It is
+like the equivalence check normally done by redo_addposition(), but it
+specifically constrained to the positions in the path. This function
+is normally invoked just before calling redo_addposition(), to avoid
+creating a "loop" via a position's better field. (This is not
+necessarily a problem, but may be undesirable for other reasons.)
+
+pposition is the address of the position that is at the end of the
+path to search. (Practically, this is the position that will be passed
+to redo_addposition() as the prev argument.) If a matching state is
+found among the position's ancestors, then the pointer at pposition
+will be overwritten to point to the matching position.
+
+state points to a buffer than contains the representation of the
+position's state that will be compared for equivalence.
+
+prunelimit specifies a distance limit. If a matching state is found
+among, and the distance between the matching state and the state at
+pposition is less than prunelimit, then the intervening positions will
+be automatically deleted, as per redo_dropposition(). (The deletion
+takes place starting at *pposition and going upward. Encountering a
+position that still has branches will stop any further deletions.)
+
+The return value is true if a cycle was found and the value at
+pposition was changed.
+
+4.2.11. redo_duplicatepath()
+
+    int redo_duplicatepath(redo_session *session,
+                           redo_position *dest,
+                           redo_position const *source);
+
+redo_duplicatepath() copies a solution path from position src to
+position dest. The two positions should normally be equivalent, thus
+typically the destination argument is simply the better field of the
+source position. If there is more than one solution path that passes
+through the source position, the shortest solution path is selected.
+Nothing is done if no solution passes through source.
+
+This function calls redo_addposition() internally, so it is not an
+error if some or all of the copied path already exist at dest.
+
+The return value is false if no solution exists to be copied, or if
+the copy was unable to complete due to insufficient memory.
+
+4.2.12. redo_hassessionchanged()
+
+    int redo_hassessionchanged(redo_session *session);
+
+redo_hassessionchanged() returns true or false depending on whether
+the move history has had any positions added or removed since the last
+call to this function. Subseqent calls to this function will return
+false until the move history is changed again.
