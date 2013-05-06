@@ -533,17 +533,6 @@ redo_position *redo_addposition(redo_session *session,
                     redo_duplicatepath(session, equiv, position);
             }
         }
-#if 0
-        if (position->movecount < equiv->movecount) {
-            graftbranch(position, equiv);
-            equiv->better = position;
-            recalcsolutionsize(equiv);
-            if (!session->fullgraft)
-                redo_duplicatepath(session, equiv, position);
-        } else {
-            position->better = equiv;
-        }
-#endif
     }
 
     session->changeflag = 1;
