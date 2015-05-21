@@ -346,7 +346,7 @@ redo_setgraftbehavior() below for more details.
     int redo_setgraftbehavior(redo_session *session,
                               int grafting);
 
-redo_setgraftvalue() changes the grafting behavior of
+redo_setgraftbehavior() changes the grafting behavior of
 redo_addposition().
 
 When a position is added that has the same state as an already
