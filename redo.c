@@ -391,7 +391,7 @@ redo_session *redo_beginsession(void const *initialstate, int size)
     if (!session)
         return NULL;
     session->statesize = size;
-    session->elementsize = n - n % sizeof(void*);
+    session->elementsize = n;
     session->grafting = redo_graft;
     session->parray = NULL;
     session->pfree = NULL;
