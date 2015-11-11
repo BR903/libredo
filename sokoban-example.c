@@ -534,7 +534,7 @@ static int initredo(void)
     if (!statebuf)
         return 0;
     storegamestate(statebuf);
-    game.session = redo_beginsession(statebuf, size);
+    game.session = redo_beginsession(statebuf, size, 0);
     if (!game.session)
         return 0;
     atexit(endredo);

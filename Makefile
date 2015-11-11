@@ -2,7 +2,7 @@
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
-VERSION = 0.6
+VERSION = 0.7
 
 
 all: libredo.a test sokoban-example

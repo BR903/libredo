@@ -264,7 +264,7 @@ Here is a description of the functions that libredo provides.
 4.2.1. redo_beginsession()
 
     redo_session *redo_beginsession(void const *initialstate,
-                                    int size);
+                                    int size, int cmpsize);
 
 redo_beginsession() creates a new move history. The return value is a
 pointer to the session. Most of the other API functions require this
@@ -276,6 +276,15 @@ tree representing the move history.
 
 size is the number of bytes in the state representation. Note that all
 states are required to be the same size.
+
+cmpsize is the number of initial bytes of the state representation
+that are actually compared when determining if two state
+representations are the same. If zero is passed in for this argument,
+it is set to be equal to size.
+
+(Please note that if cmpsize is set to be less than size, then when
+two positions are determined to be identical and are collapsed, there
+is no guarantee which of the two states will be kept.)
 
 4.2.2. redo_endsession()
 

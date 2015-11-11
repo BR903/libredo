@@ -30,13 +30,13 @@ static void test_init(void)
 
     /* Verify that session creation and deletion works at all. */
 
-    s = redo_beginsession("", 1);
+    s = redo_beginsession("", 1, 0);
     redo_endsession(s);
 
     /* Verify that redo_beginsession() rejects a too-large statesize. */
 
     p = malloc(0xFFFF);
-    s = redo_beginsession(p, 0xFFFF);
+    s = redo_beginsession(p, 0xFFFF, 0);
     assert(s == NULL);
     free(p);
 
@@ -50,7 +50,7 @@ static void test_init(void)
 static int setup(void)
 {
     memset(sbuf, 0, sizeof sbuf);
-    session = redo_beginsession(sbuf, sizeof sbuf);
+    session = redo_beginsession(sbuf, sizeof sbuf, sizeof sbuf - 1);
     assert(session);
     rootpos = redo_getfirstposition(session);
     assert(rootpos);
@@ -279,7 +279,7 @@ static void test_overall(int grafting)
 
     /* Verify that redo_suppresscycle() doesn't see cycles where none exist. */
 
-    sbuf[sizeof sbuf - 1] ^= 1;
+    sbuf[sizeof sbuf - 3] ^= 1;
     assert(!redo_suppresscycle(session, &pos3a, sbuf, 3));
     assert(!redo_hassessionchanged(session));
 
@@ -469,7 +469,7 @@ static void test_overall(int grafting)
 static void test_statecompares(void)
 {
     char state[sizeof sbuf + 1];
-    redo_position *pos;
+    redo_position *pos, *pos2;
     int i;
 
     setup();
@@ -478,7 +478,7 @@ static void test_statecompares(void)
 
     memcpy(state, redo_getsavedstate(rootpos), sizeof sbuf);
     state[sizeof sbuf] = state[0];
-    for (i = 0 ; i < (int)(sizeof sbuf) ; ++i) {
+    for (i = 0 ; i < (int)(sizeof sbuf) - 1 ; ++i) {
         state[i] ^= 1;
         pos = redo_addposition(session, rootpos, i, state, 0, redo_check);
         assert(pos);
@@ -486,12 +486,12 @@ static void test_statecompares(void)
         assert(rootpos->nextcount == i + 1);
     }
 
-    /* Verify that the byte after the state buffer is NOT examined. */
+    /* Verify that the byte beyond cmpsize is not examined. */
 
     state[i] ^= 1;
-    pos = redo_addposition(session, rootpos, i, state, 0, redo_check);
-    assert(pos);
-    assert(pos->better != NULL);
+    pos2 = redo_addposition(session, rootpos, i, state, 0, redo_check);
+    assert(pos2);
+    assert(pos2->better == pos);
 
     teardown();
 }

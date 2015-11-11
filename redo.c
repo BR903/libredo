@@ -21,9 +21,10 @@ struct redo_session {
     redo_branch *barray;        /* the allocated redo_branch array */
     redo_branch *bfree;         /* pointer to a redo_branch not in use */
     unsigned short statesize;   /* the size of the stored game state */
+    unsigned short cmpsize;     /* how much of the state to compare */
     unsigned short elementsize; /* total byte size for each position */
-    unsigned short changeflag;  /* used to track changes to the session */
-    unsigned short grafting;    /* should grafts leave the solution path? */
+    unsigned char changeflag;   /* used to track changes to the session */
+    unsigned char grafting;     /* should grafts leave the solution path? */
 };
 
 /* Increment a redo_position pointer.
@@ -56,7 +57,7 @@ static void savestate(redo_session const *session, redo_position *position,
                       void const *state, int endpoint)
 {
     position->endpoint = endpoint;
-    position->hashvalue = gethashvalue(state, session->statesize);
+    position->hashvalue = gethashvalue(state, session->cmpsize);
     memcpy((void*)redo_getsavedstate(position), state, session->statesize);
 }
 
@@ -66,7 +67,7 @@ static void savestate(redo_session const *session, redo_position *position,
 static int comparesavedstate(redo_session const *session,
                              redo_position const *position, void const *state)
 {
-    return !memcmp(redo_getsavedstate(position), state, session->statesize);
+    return !memcmp(redo_getsavedstate(position), state, session->cmpsize);
 }
 
 /*
@@ -265,7 +266,7 @@ static redo_position *checkforequiv(redo_session const *session,
     redo_position *equiv, *pos;
     unsigned short hashvalue;
 
-    hashvalue = gethashvalue(state, session->statesize);
+    hashvalue = gethashvalue(state, session->cmpsize);
     for (pos = session->parray  ; pos ; pos = pos->prev) {
         for ( ; pos->inarray ; pos = incpos(session, pos)) {
             if (pos->inuse && !pos->setbetter
@@ -378,11 +379,14 @@ static void recalcsolutionsize(redo_position *position)
 
 /* Create a new session with a single position at the root.
  */
-redo_session *redo_beginsession(void const *initialstate, int size)
+redo_session *redo_beginsession(void const *initialstate,
+				int size, int cmpsize)
 {
     redo_session *session;
     int n;
 
+    if (size <= 0 || size > USHRT_MAX || cmpsize < 0 || cmpsize > size)
+	return NULL;
     n = sizeof(redo_position) + size + (sizeof(void*) - 1);
     n = n - n % sizeof(void*);
     if (n > USHRT_MAX)
@@ -391,6 +395,7 @@ redo_session *redo_beginsession(void const *initialstate, int size)
     if (!session)
         return NULL;
     session->statesize = size;
+    session->cmpsize = cmpsize ? cmpsize : size;
     session->elementsize = n;
     session->grafting = redo_graft;
     session->parray = NULL;

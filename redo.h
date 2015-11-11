@@ -14,9 +14,9 @@ typedef struct redo_session redo_session;
 typedef struct redo_position redo_position;
 typedef struct redo_branch redo_branch;
 
-/* The library version: 0.6
+/* The library version: 0.7
  */
-#define REDO_LIBRARY_VERSION 0x0006
+#define REDO_LIBRARY_VERSION 0x0007
 
 /* The information associated with a visited state.
  */
@@ -45,10 +45,14 @@ struct redo_branch {
 /* Create and return a new redo session. initialstate points to a
  * buffer that contains the representation of the state of the
  * starting position, from which all other positions will descend.
- * size is the size of the state representation in bytes. NULL is
- * returned if memory for the session could not be allocated.
+ * size is the size of the state representation in bytes. cmpsize is
+ * number of bytes in the state representation to actually compare, or
+ * zero to use the entire state representation. NULL is returned if
+ * the size or cmpsize arguments are invalid, or if memory for the
+ * session cannot be allocated.
  */
-extern redo_session *redo_beginsession(void const *initialstate, int size);
+extern redo_session *redo_beginsession(void const *initialstate,
+				       int size, int cmpsize);
 
 /* Possible values for the grafting argument to redo_setgraftbehavior().
  */
