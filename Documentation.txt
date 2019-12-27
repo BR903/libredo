@@ -10,13 +10,22 @@ CONTENTS
 
 1. WHAT IS LIBREDO?
 
-libredo is a small library that provides support for adding advanced
-undo and redo commands to a program. Unlike the typical undo/redo
-functionality, which only remembers a single linear sequenc, libredo
-is designed to manage a complete history of user actions. The idea is
-to allow users to navigate around this history, to alert them when
-they move into already-explored territory, and to automatically detect
-when existing subsequences have been improved upon.
+libredo is a simple library that makes it easy to add powerful undo
+and redo commands to a logic puzzle game (or similar type of program).
+
+Many such programs that provide undo and redo commands will only
+remember a single linear sequence. That is, undone states will only be
+redo-able while a user is using these two commands. Once the user uses
+some other command that changes state in a new way, all remaining
+undone states are forgotten. This limited functionality is common, if
+not ubiquitous. I would like to see more programs offer something
+better.
+
+libredo makes it easy for a program to manage a complete history of
+user actions. The program can then allow the user to navigate around
+this history, to notify them when they move into already-explored
+territory, and to automatically detect when existing sub-sequences
+have been improved upon.
 
 
 2. CANDIDATES FOR LIBREDO
@@ -34,7 +43,7 @@ puzzles share:
   solve it in fewer moves. (A logic puzzle in which there is only one
   unique set of moves needed to solve it would therefore be a poor
   candidate for libredo.)
-  
+
 * There is no hidden information, or at least nothing of real
   significance, which would otherwise be spoiled by providing an
   undo/redo facility. (For example Klondike would not be a good
@@ -52,25 +61,20 @@ puzzles share:
   unabridged move history.
 
 Sokoban is a good example of a program that has all of these features.
-There are only four possible moves, for example. And the complete
-state of a game in progress can be encoded by recording the position
-of every moveable object. The exact size would differ for each level,
-but rare is the Sokoban level that would need 100 bytes or more.
-Freecell is another example: There are 192 different moves -- 12
-sources times 16 destinations -- but at many points in a game there
-are frequently less than 50 legal moves. And since 19 is the largest
-number of cards that a column can grow to, a single byte is sufficient
-to identify a card's location, allowing the complete state to be
-described in 52 bytes. (On the other hand, Freecell would ultimately
-not be a good candidate, as Freecell games are generally not logically
-complex enough to warrant an advanced undo/redo facility.)
+There are only four possible moves, and the complete state of a game
+in progress can be encoded by recording the position of every moveable
+object. The exact size would differ for each level, but rare is the
+Sokoban level that would need 100 bytes or more.
 
-Many programs that provide undo and redo commands will remember undone
-states only while the user is using these two commands. Once the user
-uses some other command that changes state in a new way, all of the
-undone states are discarded. This limited functionality is common, if
-not ubiquitous. I would like to see more such programs offer something
-better. Thus, this library.
+Freecell is another example: There are 192 different moves (12 places
+to move from, times 16 places to move to) but at many points in a game
+there are frequently less than 50 legal moves. And since 19 is the
+largest number of cards that a column can grow to, a single byte is
+sufficient to identify a card's location, allowing the complete state
+to be described in 52 bytes. (On the other hand, Freecell would not be
+a good candidate ultimately, as Freecell games are generally not
+logically complex enough to benefit from an advanced undo/redo
+facility.)
 
 
 3. USE CASES
@@ -157,7 +161,6 @@ Note: the above description assumes that grafting behavior is enabled
 in the session. See redo_addposition() below for a description of all
 available grafting behaviors.
 
-
 4. THE REDO API
 
 This section documents the API in detail.
@@ -217,8 +220,8 @@ moves.
 
     unsigned short endpoint;
 
-This field is true if the position is a solution state. (This field
-is set by the argument to redo_addposition().)
+This field is true if the position is a solution state. (This field is
+set by the argument to redo_addposition().)
 
     unsigned short solutionsize;
 
@@ -254,17 +257,19 @@ point.
 Branches are stored as a linked list; this field provides the link.
 (The name "cdr" refers to the traditional Lisp function for moving
 down a linked list. It was selected because the more common name
-"next" would invite confusion with the "next" field in redo_position.)
+"next" would invite confusion with the next field in redo_position.)
 
 
 4.2. THE REDO API: FUNCTIONS
 
-Here is a description of the functions that libredo provides.
+The following provides a brief description of each function that
+libredo provides.
 
 4.2.1. redo_beginsession()
 
     redo_session *redo_beginsession(void const *initialstate,
-                                    int size, int cmpsize);
+                                    int size,
+                                    int cmpsize);
 
 redo_beginsession() creates a new move history. The return value is a
 pointer to the session. Most of the other API functions require this
@@ -325,7 +330,7 @@ contents; the caller may reuse the buffer after redo_addposition()
 returns. (Note, by the way, that if redo_addposition() finds an
 existing position, it does not check that the existing position's
 state is identical to the one passed in. It is the caller's
-responsibility to encode the state in a consistent fashion.)
+responsibility to encode the state in a consistent fashion!)
 
 A true value for endpoint indicates that the new position should be
 considered a valid solution state. This causes the solutionsize field
@@ -341,13 +346,13 @@ redo_checklater will temporarily avoid the check, scheduling it for
 the next call to redo_setbetterfields() (see below).
 
 If the check is performed and redo_addposition() finds another
-position with the same state but with a smaller movecount, it will set
-the better field on the returned redo_position to point to it. On the
-other hand, if a position with the same state is found but it is the
-new position that has the smaller movecount, then the older position
-will have its better field updated to point to the new position. In
-addition, the other position's subtree might be grafted to the new
-position, depending on the current grafting behavior. See
+position with the same state but with a smaller move count, it will
+set the better field on the returned redo_position to point to it. On
+the other hand, if a position with the same state is found but it is
+the new position that has the smaller move count, then the older
+position will have its better field updated to point to the new
+position. In addition, the other position's subtree might be grafted
+to the new position, depending on the current grafting behavior. See
 redo_setgraftbehavior() below for more details.
 
 4.2.5. redo_setgraftbehavior()
@@ -359,29 +364,29 @@ redo_setgraftbehavior() changes the grafting behavior of
 redo_addposition().
 
 When a position is added that has the same state as an already
-existing position but with a smaller movecount, there are four
+existing position but with a smaller move count, there are four
 possible actions that libredo can take, depending on the current
 grafting behavior:
 
-The redo_nograft behavior is to do nothing, beyond setting the
-better field appropriately.
+* The redo_nograft behavior is to do nothing, beyond setting the
+  better field appropriately.
 
-The redo_copypath behavior is to copy the shortest solution path in
-the older position's subtree over to the new position. (If no solution
-path exists from the older position, then this behavior is the same as
-redo_nograft's.)
+* The redo_copypath behavior is to copy the shortest solution path in
+  the older position's subtree over to the new position. (If no
+  solution path exists from the older position, then this behavior is
+  the same as redo_nograft's.)
 
-The redo_graft behavior is to transfer the entire subtree currently
-rooted at the older position over to the new position. The older
-position thus becomes a leaf node, and any solutions that the subtree
-contains will inherit the improvement in size. This is the default
-behavior.
+* The redo_graft behavior is to transfer the entire subtree currently
+  rooted at the older position over to the new position. The older
+  position thus becomes a leaf node, and any solutions that the
+  subtree contains will inherit the improvement in size. This is the
+  default behavior.
 
-The redo_graftandcopy behavior is to graft the subtree, as with
-redo_graft, but to then copy the shortest solution back to the older
-position, so that it is not left as a leaf node. (Again, if no
-solution exists in the grafted subtree then this behavior is the same
-as redo_graft's.)
+* The redo_graftandcopy behavior is to graft the subtree, as with
+  redo_graft, but to then copy the shortest solution back to the
+  older position, so that it is not left as a leaf node. (Again, if
+  no solution exists in the grafted subtree then this behavior is the
+  same as redo_graft's.)
 
 The return value is the option's previous value.
 
@@ -402,8 +407,8 @@ This function traverses a branch in the move history's tree, starting
 from one position and following the branch labeled with a particular
 move to another position, which is the return value. This function
 also has the effect of causing the requested branch to be moved to the
-front of the linked list (in the parent position). NULL is returned
-if no such branch exists at this position.
+front of the linked list (in the parent position). NULL is returned if
+no such branch exists at this position.
 
 4.2.8. redo_dropposition()
 
@@ -449,26 +454,27 @@ memory.
 
 redo_suppresscycle() looks for matching states along a path. It is
 like the equivalence check normally done by redo_addposition(), but it
-specifically constrained to the positions in the path. This function
-is normally invoked just before calling redo_addposition(), to avoid
-creating a "loop" via a position's better field. (This is not
-necessarily a problem, but may be undesirable for other reasons.)
+is specifically constrained to the positions in the path. This
+function is normally invoked just before calling redo_addposition(),
+to avoid creating a "loop" via a position's better field. (This is not
+a problem for libredo, but may be undesirable for other reasons.)
 
 pposition is the address of the position that is at the end of the
-path to search. (Practically, this is the position that will be passed
-to redo_addposition() as the prev argument.) If a matching state is
-found among the position's ancestors, then the pointer at pposition
-will be overwritten to point to the matching position.
+path to search. (Practically, this is the position that would be
+passed to redo_addposition() as the prev argument.) If a matching
+state is found among the position's ancestors, then the pointer at
+pposition will be overwritten to point to the matching position.
 
 state points to a buffer than contains the representation of the
 position's state that will be compared for equivalence.
 
 prunelimit specifies a distance limit. If a matching state is found
-among, and the distance between the matching state and the state at
-pposition is less than prunelimit, then the intervening positions will
-be automatically deleted, as per redo_dropposition(). (The deletion
-takes place starting at *pposition and going upward. Encountering a
-position that still has branches will stop any further deletions.)
+among the ancestors, and the distance between the matching state and
+the state at pposition is less than prunelimit, then the intervening
+positions will be automatically deleted, as per redo_dropposition().
+(The deletion takes place starting at *pposition and going upward.
+Encountering a position that still has branches will stop any further
+deletions.)
 
 The return value is true if a cycle was found and the value at
 pposition was changed.
@@ -479,15 +485,15 @@ pposition was changed.
                            redo_position *dest,
                            redo_position const *source);
 
-redo_duplicatepath() copies a solution path from position src to
+redo_duplicatepath() copies a solution path from position source to
 position dest. The two positions should normally be equivalent, thus
-typically the destination argument is simply the better field of the
-source position. If there is more than one solution path that passes
-through the source position, the shortest solution path is selected.
-Nothing is done if no solution passes through source.
+typically the dest argument is simply the better field of source. If
+there is more than one solution path that passes through the source
+position, the shortest solution path is selected. Nothing is done if
+no solution passes through source.
 
 This function calls redo_addposition() internally, so it is not an
-error if some or all of the copied path already exist at dest.
+error if some or all of the copied path already exists at dest.
 
 The return value is false if no solution exists to be copied, or if
 the copy was unable to complete due to insufficient memory.
@@ -498,5 +504,5 @@ the copy was unable to complete due to insufficient memory.
 
 redo_hassessionchanged() returns true or false depending on whether
 the move history has had any positions added or removed since the last
-call to this function. Subseqent calls to this function will return
+call to this function. A subseqent call to this function will return
 false until the move history is changed again.
