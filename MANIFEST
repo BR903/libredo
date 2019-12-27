@@ -7,4 +7,5 @@ README
 redo-tests.c
 redo.c
 redo.h
+types.h
 sokoban-example.c
