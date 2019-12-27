@@ -89,7 +89,7 @@ static void test_overall(int grafting)
 
     memset(sbuf, '_', sizeof sbuf);
 
-    /* Add two different moves to the root. Verify that they are distinct. */
+    /* Add a move to the root position. */
 
     sbuf[1] = 'a';
     pos1a = redo_addposition(session, rootpos, 'a', sbuf, 0, redo_check);
@@ -102,7 +102,13 @@ static void test_overall(int grafting)
     assert(pos1a->next == NULL);
     assert(rootpos->next != NULL);
     assert(rootpos->nextcount == 1);
+
+    /* Verify that the change flag works as expected. */
+
     assert(redo_hassessionchanged(session));
+    assert(!redo_hassessionchanged(session));
+
+    /* Add another move, and verify that the two positions are distinct. */
 
     sbuf[1] = 'b';
     pos1b = redo_addposition(session, rootpos, 'b', sbuf, 0, redo_check);
