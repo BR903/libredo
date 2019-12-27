@@ -506,3 +506,12 @@ redo_hassessionchanged() returns true or false depending on whether
 the move history has had any positions added or removed since the last
 call to this function. A subseqent call to this function will return
 false until the move history is changed again.
+
+4.2.13. redo_clearsessionchanged()
+
+    int redo_clearsessionchanged(redo_session *session);
+
+redo_clearsessionchanged() resets the session's change flag to false.
+(This is equivalent to calling redo_hassessionchanged() and ignoring
+the return value.)
+
