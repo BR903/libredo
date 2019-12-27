@@ -162,6 +162,11 @@ extern void redo_setbetterfields(redo_session const *session);
  */
 extern int redo_hassessionchanged(redo_session *session);
 
+/* Reset the change flag. Calling redo_hassessionchanged() necessarily
+ * has this as a side effect, so a separate function is unnecessary.
+ */
+#define redo_clearsessionchanged(s) ((void)redo_hassessionchanged(s))
+
 /* Delete the sesssion and free all associated memory.
  */
 extern void redo_endsession(redo_session *session);
