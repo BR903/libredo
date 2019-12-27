@@ -11,20 +11,20 @@ all: libredo.a test sokoban-example
 libredo.a: redo.o
 	ar crs $@ $^
 
-redo.o: redo.c redo.h
+redo.o: redo.c redo.h types.h
 
 
 test: redo-tests
 	./redo-tests
 
 redo-tests: redo-tests.o libredo.a
-redo-tests.o: redo-tests.c redo.h
+redo-tests.o: redo-tests.c redo.h types.h
 
 
 sokoban-example: sokoban-example.o libredo.a
 	$(CC) -o $@ $^ -lncurses
 
-sokoban-example.o: sokoban-example.c redo.h
+sokoban-example.o: sokoban-example.c redo.h types.h
 
 
 clean:

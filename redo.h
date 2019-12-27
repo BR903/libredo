@@ -7,12 +7,10 @@
  * any later version.
  */
 
-#ifndef _redo_h_
-#define _redo_h_
+#ifndef _libredo_redo_h_
+#define _libredo_redo_h_
 
-typedef struct redo_session redo_session;
-typedef struct redo_position redo_position;
-typedef struct redo_branch redo_branch;
+#include "types.h"
 
 /* The library version: 0.7
  */
