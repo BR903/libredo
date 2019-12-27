@@ -269,9 +269,10 @@ static redo_position *checkforequiv(redo_session const *session,
     hashvalue = gethashvalue(state, session->cmpsize);
     for (pos = session->parray  ; pos ; pos = pos->prev) {
         for ( ; pos->inarray ; pos = incpos(session, pos)) {
-            if (pos->inuse && !pos->setbetter
-                           && pos->hashvalue == hashvalue
-                           && comparesavedstate(session, pos, state)) {
+	    if (!pos->inuse)
+		continue;
+            if (!pos->setbetter && pos->hashvalue == hashvalue &&
+                                   comparesavedstate(session, pos, state)) {
                 equiv = pos;
                 while (equiv->better)
                     equiv = equiv->better;
@@ -634,7 +635,9 @@ void redo_setbetterfields(redo_session const *session)
 
     for (position = session->parray ; position ; position = position->prev) {
         for ( ; position->inarray ; position = incpos(session, position)) {
-            if (position->inuse && position->setbetter) {
+	    if (!position->inuse)
+		continue;
+            if (position->setbetter) {
                 other = checkforequiv(session, redo_getsavedstate(position));
                 position->better = other;
                 if (other && other->movecount > position->movecount) {
