@@ -23,7 +23,10 @@ PURPOSE. See the GNU General Public License, included in this
 distribution in the file COPYING, for more details.
 
 Bug reports and general feedback should be directed to the author at
-<breadbox@muppetlabs.com>.
+<breadbox@muppetlabs.com>. If you use this library in your own code,
+consider dropping me a line to let me know. (You should also let me
+know if you tried to use this library in your code, but it didn't do
+what you needed!)
 
 Happy coding.
 
