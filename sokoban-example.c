@@ -313,6 +313,7 @@ static int savesession(void)
         return 0;
     savesession_recurse(fp, redo_getfirstposition(game.session));
     fclose(fp);
+    redo_clearsessionchanged(game.session);
     return 1;
 }
 
@@ -362,7 +363,7 @@ static int loadsession(void)
     redo_setbetterfields(game.session);
     game.bestsolutionsize = startpos->solutionsize;
     loadgamestate(redo_getsavedstate(startpos));
-    redo_hassessionchanged(game.session);
+    redo_clearsessionchanged(game.session);
     return 1;
 }
 

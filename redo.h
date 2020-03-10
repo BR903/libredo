@@ -12,9 +12,13 @@
 
 #include "types.h"
 
-/* The library version: 0.7
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* The library version: 0.8
  */
-#define REDO_LIBRARY_VERSION 0x0007
+#define REDO_LIBRARY_VERSION 0x0008
 
 /* The information associated with a visited state.
  */
@@ -50,7 +54,7 @@ struct redo_branch {
  * session cannot be allocated.
  */
 extern redo_session *redo_beginsession(void const *initialstate,
-				       int size, int cmpsize);
+                                       int size, int cmpsize);
 
 /* Possible values for the grafting argument to redo_setgraftbehavior().
  */
@@ -74,6 +78,10 @@ extern int redo_setgraftbehavior(redo_session *session, int grafting);
 /* Return the position for the initial state.
  */
 extern redo_position *redo_getfirstposition(redo_session const *session);
+
+/* Return the number of positions stored in the session.
+ */
+extern int redo_getsessionsize(redo_session const *session);
 
 /* Return a read-only pointer to the copied state associated with a
  * position.
@@ -146,27 +154,40 @@ extern int redo_suppresscycle(redo_session *session, redo_position **pposition,
 extern int redo_duplicatepath(redo_session *session,
                               redo_position *dest, redo_position const *src);
 
+/* Update the "extra" state data for an existing position, after the
+ * compared state data. If redo_beginsession() was called without
+ * creating extra state data (i.e. with a non-zero cmpsize argument),
+ * then this function will silently do nothing.
+ */
+extern void redo_updatesavedstate(redo_session const *session,
+                                  redo_position *position, void const *state);
+
 /* Examine every position in the session, looking for ones that have
  * the setbetter field set to true. The ones that do will then have
  * their better fields re-initialized. (The purpose of this function
  * is to allow a serializer to omit the value of the better fields,
  * merely noting which ones have a non-NULL value. This function can
- * then recreate the values on deserialization.)
+ * then recreate the values on deserialization.) The return value is
+ * the number of better pointers that were set.
  */
-extern void redo_setbetterfields(redo_session const *session);
+extern int redo_setbetterfields(redo_session const *session);
 
 /* Return true if positions have been added to or removed from the
- * session since the last time this function was called.
+ * session since it was initialized, or since the last call to
+ * redo_clearsessionchanged().
  */
-extern int redo_hassessionchanged(redo_session *session);
+extern int redo_hassessionchanged(redo_session const *session);
 
-/* Reset the change flag. Calling redo_hassessionchanged() necessarily
- * has this as a side effect, so a separate function is unnecessary.
+/* Reset the session change flag. The flag's prior value is returned.
  */
-#define redo_clearsessionchanged(s) ((void)redo_hassessionchanged(s))
+extern int redo_clearsessionchanged(redo_session *session);
 
 /* Delete the sesssion and free all associated memory.
  */
 extern void redo_endsession(redo_session *session);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

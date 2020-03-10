@@ -17,9 +17,15 @@
 static redo_session *session;
 static redo_position *rootpos;
 
-/* The state buffer, intentionally given an odd size.
+/* The state size is intentionally given an odd value. One byte of
+ * state data is non-comparing.
  */
-static char sbuf[33];
+#define SIZE_STATE 33
+#define SIZE_CMPSTATE (SIZE_STATE - 1)
+
+/* A state data buffer for general use.
+ */
+static char sbuf[SIZE_STATE];
 
 /* Minimal smoke test, run before the real tests.
  */
@@ -31,6 +37,7 @@ static void test_init(void)
     /* Verify that session creation and deletion works at all. */
 
     s = redo_beginsession("", 1, 0);
+    assert(s);
     redo_endsession(s);
 
     /* Verify that redo_beginsession() rejects a too-large statesize. */
@@ -50,7 +57,7 @@ static void test_init(void)
 static int setup(void)
 {
     memset(sbuf, 0, sizeof sbuf);
-    session = redo_beginsession(sbuf, sizeof sbuf, sizeof sbuf - 1);
+    session = redo_beginsession(sbuf, SIZE_STATE, SIZE_CMPSTATE);
     assert(session);
     rootpos = redo_getfirstposition(session);
     assert(rootpos);
@@ -71,7 +78,7 @@ static void teardown(void)
     session = NULL;
 }
 
-/* Give all of the functionality a test run.
+/* Give (almost) all of the functionality a test run.
  */
 static void test_overall(int grafting)
 {
@@ -81,6 +88,7 @@ static void test_overall(int grafting)
     int g;
 
     setup();
+    assert(redo_getsessionsize(session) == 1);
 
     g = redo_setgraftbehavior(session, redo_nograft);
     assert(g == redo_graft);
@@ -102,10 +110,12 @@ static void test_overall(int grafting)
     assert(pos1a->next == NULL);
     assert(rootpos->next != NULL);
     assert(rootpos->nextcount == 1);
+    assert(redo_getsessionsize(session) == 2);
 
     /* Verify that the change flag works as expected. */
 
     assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
     assert(!redo_hassessionchanged(session));
 
     /* Add another move, and verify that the two positions are distinct. */
@@ -119,7 +129,8 @@ static void test_overall(int grafting)
     assert(pos1b->prev == pos1a->prev);
     assert(pos1b->movecount == 1);
     assert(rootpos->nextcount == 2);
-    assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
+    assert(redo_getsessionsize(session) == 3);
 
     /* Verify redo_getnextposition() behaves correctly. */
 
@@ -147,7 +158,8 @@ static void test_overall(int grafting)
     assert(pos2a->movecount == 2);
     assert(pos2a->nextcount == 0);
     assert(pos1a->nextcount == 1);
-    assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
+    assert(redo_getsessionsize(session) == 4);
 
     pos = redo_getnextposition(pos1a, 'a');
     assert(pos);
@@ -162,7 +174,8 @@ static void test_overall(int grafting)
     assert(pos1a->next == NULL);
     assert(pos1a->nextcount == 0);
     assert(!pos2a->inuse);
-    assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
+    assert(redo_getsessionsize(session) == 3);
 
     /* Re-add the deleted move. */
 
@@ -174,14 +187,16 @@ static void test_overall(int grafting)
     assert(pos2a->movecount == 2);
     assert(pos1a->nextcount == 1);
     assert(pos1a->next != NULL);
-    assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
+    assert(redo_getsessionsize(session) == 4);
 
     /* Verify that deleting a non-leaf position will do nothing. */
 
     pos = redo_dropposition(session, pos1a);
     assert(pos == pos1a);
     assert(pos1a->inuse);
-    assert(!redo_hassessionchanged(session));
+    assert(redo_getsessionsize(session) == 4);
+    assert(!redo_clearsessionchanged(session));
 
     /* Verify that repeating a move won't create a new position. */
 
@@ -190,7 +205,8 @@ static void test_overall(int grafting)
     assert(pos1b->movecount == 1);
     assert(pos1a->nextcount == 1);
     assert(rootpos->nextcount == 2);
-    assert(!redo_hassessionchanged(session));
+    assert(redo_getsessionsize(session) == 4);
+    assert(!redo_clearsessionchanged(session));
 
     /* Verify that identical states are recognized as such. */
 
@@ -204,9 +220,10 @@ static void test_overall(int grafting)
     assert(pos1c->better == NULL);
     assert(pos2a->better != NULL);
     assert(pos2a->better == pos1c);
-    assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
+    assert(redo_getsessionsize(session) == 5);
 
-    /* Verify that identical states are not seen when equivcheck is false. */
+    /* Verify that identical states are not seen when equivcheck isn't done. */
 
     sbuf[3] = 'a';
     pos3a = redo_addposition(session, pos2a, 'a', sbuf, 0, redo_checklater);
@@ -217,7 +234,8 @@ static void test_overall(int grafting)
     assert(pos2a->nextcount == 1);
     assert(pos3a->better == NULL);
     assert(pos3a->setbetter);
-    assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
+    assert(redo_getsessionsize(session) == 6);
 
     pos2c = redo_addposition(session, pos1c, 'c', sbuf, 0, redo_nocheck);
     assert(pos2c);
@@ -227,7 +245,8 @@ static void test_overall(int grafting)
     assert(pos1c->nextcount == 1);
     assert(pos2c->better == NULL);
     assert(!pos2c->setbetter);
-    assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
+    assert(redo_getsessionsize(session) == 7);
 
     /* Verify that redo_setbetterfields() finds matches for marked states. */
 
@@ -239,7 +258,8 @@ static void test_overall(int grafting)
     assert(pos3a->better == pos2c);
     assert(pos2a->better == NULL);
     assert(pos1a->better == NULL);
-    assert(!redo_hassessionchanged(session));
+    assert(redo_getsessionsize(session) == 7);
+    assert(!redo_clearsessionchanged(session));
 
     /* Restore mucked-up better field for pos2a. */
 
@@ -268,7 +288,8 @@ static void test_overall(int grafting)
     assert(redo_getnextposition(pos1a, 'a') == NULL);
     assert(!pos2a->inuse);
     assert(!pos3a->inuse);
-    assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
+    assert(redo_getsessionsize(session) == 5);
 
     /* Re-add the deleted moves. */
 
@@ -276,18 +297,19 @@ static void test_overall(int grafting)
     sbuf[2] = 'a';
     pos2a = redo_addposition(session, pos1a, 'a', sbuf, 0, redo_check);
     assert(pos2a->inuse);
-    assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
     sbuf[3] = 'a';
     pos3a = redo_addposition(session, pos2a, 'a', sbuf, 0, redo_check);
     assert(pos3a->inuse);
-    assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
     assert(pos3a->better == pos2c);
+    assert(redo_getsessionsize(session) == 7);
 
     /* Verify that redo_suppresscycle() doesn't see cycles where none exist. */
 
-    sbuf[sizeof sbuf - 3] ^= 1;
+    sbuf[SIZE_CMPSTATE - 1] ^= 1;
     assert(!redo_suppresscycle(session, &pos3a, sbuf, 3));
-    assert(!redo_hassessionchanged(session));
+    assert(!redo_clearsessionchanged(session));
 
     /* Verify that a low prunelimit prevents anything from being deleted. */
 
@@ -298,7 +320,8 @@ static void test_overall(int grafting)
     assert(pos == pos1a);
     assert(pos2a->inuse);
     assert(pos3a->inuse);
-    assert(!redo_hassessionchanged(session));
+    assert(redo_getsessionsize(session) == 7);
+    assert(!redo_clearsessionchanged(session));
 
     /* Verify that the session contains no solutions. */
 
@@ -330,7 +353,8 @@ static void test_overall(int grafting)
     assert(pos4c->movecount == 4);
     assert(pos4c->endpoint);
     assert(pos3c->nextcount == 2);
-    assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
+    assert(redo_getsessionsize(session) == 10);
 
     /* Verify that the entire solution path is marked (and nothing else). */
 
@@ -353,7 +377,8 @@ static void test_overall(int grafting)
     assert(pos4a->solutionsize == 5);
     assert(pos3c->solutionsize == 4);
     assert(rootpos->solutionsize == 4);
-    assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
+    assert(redo_getsessionsize(session) == 11);
 
     /* Copy the (shorter) solution path proceeding from pos1c to pos2a. */
 
@@ -362,7 +387,8 @@ static void test_overall(int grafting)
     assert(pos2a->solutionsize == 5);
     assert(pos2a->nextcount == 2);
     assert(redo_getnextposition(pos2a, 'c') != NULL);
-    assert(redo_hassessionchanged(session));
+    assert(redo_clearsessionchanged(session));
+    assert(redo_getsessionsize(session) == 14);
 
     /*
      * The session tree now looks like this:
@@ -388,8 +414,8 @@ static void test_overall(int grafting)
     assert(pos1d->movecount == 1);
     assert(pos1d->inuse);
     assert(rootpos->nextcount == 4);
-    assert(redo_hassessionchanged(session));
     assert(pos3c->better == pos1d);
+    assert(redo_clearsessionchanged(session));
 
     /* Verify that the requested grafting behavior was correctly applied. */
 
@@ -406,6 +432,7 @@ static void test_overall(int grafting)
         assert(pos3c->nextcount == 2);
         assert(pos1d->next == NULL);
         assert(pos1d->nextcount == 0);
+        assert(redo_getsessionsize(session) == 15);
         break;
 
         /* Graft: pos3c's children are grafted onto pos1d wholesale. */
@@ -424,6 +451,7 @@ static void test_overall(int grafting)
         assert(pos == pos4a);
         pos = redo_getnextposition(pos1d, 'c');
         assert(pos == pos4c);
+        assert(redo_getsessionsize(session) == 15);
         break;
 
         /* Copy path: pos1d gets a copy of the shortest solution path. */
@@ -444,6 +472,7 @@ static void test_overall(int grafting)
         assert(pos1d->next->move == 'c');
         assert(pos1d->next->p != pos4a);
         assert(pos1d->next->p->endpoint);
+        assert(redo_getsessionsize(session) == 16);
         break;
 
         /* Graft and copy: after the graft, pos3c gets a path copied back. */
@@ -464,6 +493,7 @@ static void test_overall(int grafting)
         assert(pos == pos4a);
         pos = redo_getnextposition(pos1d, 'c');
         assert(pos == pos4c);
+        assert(redo_getsessionsize(session) == 16);
         break;
     }
 
@@ -474,30 +504,42 @@ static void test_overall(int grafting)
  */
 static void test_statecompares(void)
 {
-    char state[sizeof sbuf + 1];
+    char state[SIZE_STATE];
+    char const *s;
     redo_position *pos, *pos2;
     int i;
 
     setup();
 
-    /* Verify that every byte in the state is examined when comparing. */
+    /* Verify that every comparing byte in the state is significant. */
 
-    memcpy(state, redo_getsavedstate(rootpos), sizeof sbuf);
-    state[sizeof sbuf] = state[0];
-    for (i = 0 ; i < (int)(sizeof sbuf) - 1 ; ++i) {
+    memcpy(state, redo_getsavedstate(rootpos), SIZE_STATE);
+    for (i = 0 ; i < SIZE_CMPSTATE ; ++i) {
         state[i] ^= 1;
         pos = redo_addposition(session, rootpos, i, state, 0, redo_check);
         assert(pos);
         assert(pos->better == NULL);
         assert(rootpos->nextcount == i + 1);
     }
+    assert(redo_getsessionsize(session) == i + 1);
 
-    /* Verify that the byte beyond cmpsize is not examined. */
+    /* Verify that the non-comparing byte of state data is not examined. */
 
     state[i] ^= 1;
     pos2 = redo_addposition(session, rootpos, i, state, 0, redo_check);
     assert(pos2);
     assert(pos2->better == pos);
+
+    /* Verify that state data can be changed, but only non-comparing bytes. */
+
+    memcpy(state, redo_getsavedstate(pos2), SIZE_STATE);
+    for (i = 0 ; i < SIZE_STATE ; ++i)
+        state[i] ^= 0xFF;
+    redo_updatesavedstate(session, pos2, state);
+    s = redo_getsavedstate(pos2);
+    for (i = 0 ; i < SIZE_CMPSTATE ; ++i)
+        assert(state[i] != s[i]);
+    assert(state[i] == s[i]);
 
     teardown();
 }

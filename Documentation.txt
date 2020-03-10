@@ -161,6 +161,7 @@ Note: the above description assumes that grafting behavior is enabled
 in the session. See redo_addposition() below for a description of all
 available grafting behaviors.
 
+
 4. THE REDO API
 
 This section documents the API in detail.
@@ -287,9 +288,13 @@ that are actually compared when determining if two state
 representations are the same. If zero is passed in for this argument,
 it is set to be equal to size.
 
-(Please note that if cmpsize is set to be less than size, then when
-two positions are determined to be identical and are collapsed, there
-is no guarantee which of the two states will be kept.)
+(Note: if cmpsize is set to be less than size, libredo has no way to
+validate the extra bytes of state data beyond cmpsize. Thus, if
+grafting behavior is enabled, a graft or a copy operation might cause
+inconsistenties across a solution path, depending on how the extra
+state data is being used. If this is an issue, but grafting behavior
+is still desirable, the caller may need to use redo_updatesavedstate()
+to manually fix up the extra state data for the grafted positions.)
 
 4.2.2. redo_endsession()
 
@@ -305,7 +310,14 @@ libredo has associated with the move history.
 This function returns the initial position in the move history, that
 was created in the call to redo_beginsession().
 
-4.2.4. redo_addposition()
+4.2.4. redo_getsessionsize()
+
+    int redo_getsessionsize(redo_session const *session);
+
+This function returns the number of positions currently stored in the
+move history.
+
+4.2.5. redo_addposition()
 
     redo_position *redo_addposition(redo_session *session,
                                     redo_position *prev,
@@ -355,7 +367,7 @@ position. In addition, the other position's subtree might be grafted
 to the new position, depending on the current grafting behavior. See
 redo_setgraftbehavior() below for more details.
 
-4.2.5. redo_setgraftbehavior()
+4.2.6. redo_setgraftbehavior()
 
     int redo_setgraftbehavior(redo_session *session,
                               int grafting);
@@ -390,7 +402,7 @@ grafting behavior:
 
 The return value is the option's previous value.
 
-4.2.6. redo_getsavedstate()
+4.2.7. redo_getsavedstate()
 
     void const *redo_getsavedstate(redo_position const *position);
 
@@ -398,7 +410,7 @@ This function returns a pointer to libredo's copy of the state
 associated with the given position. (It should go without saying that
 the contents of this buffer should not be altered in any way.)
 
-4.2.7. redo_getnextposition()
+4.2.8. redo_getnextposition()
 
     redo_position *redo_getnextposition(redo_position const *position,
                                         int move);
@@ -410,7 +422,7 @@ also has the effect of causing the requested branch to be moved to the
 front of the linked list (in the parent position). NULL is returned if
 no such branch exists at this position.
 
-4.2.8. redo_dropposition()
+4.2.9. redo_dropposition()
 
     redo_position *redo_dropposition(redo_session *session,
                                      redo_position *position);
@@ -421,7 +433,7 @@ positions. The return value is the position's parent if the deletion
 was successful. If the deletion was not permitted, the return value is
 the original position, unchanged.
 
-4.2.9. redo_setbetterfields()
+4.2.10. redo_setbetterfields()
 
     int redo_setbetterfields(redo_session *session);
 
@@ -445,7 +457,7 @@ or redo_checklater depending on the flag value, and then
 redo_setbetterfields() is called once the entire move history is in
 memory.
 
-4.2.10. redo_suppresscycle()
+4.2.11. redo_suppresscycle()
 
     int redo_suppresscycle(redo_session *session,
                            redo_position **pposition,
@@ -479,7 +491,7 @@ deletions.)
 The return value is true if a cycle was found and the value at
 pposition was changed.
 
-4.2.11. redo_duplicatepath()
+4.2.12. redo_duplicatepath()
 
     int redo_duplicatepath(redo_session *session,
                            redo_position *dest,
@@ -498,20 +510,33 @@ error if some or all of the copied path already exists at dest.
 The return value is false if no solution exists to be copied, or if
 the copy was unable to complete due to insufficient memory.
 
-4.2.12. redo_hassessionchanged()
+4.2.13. redo_updatesavedstate()
 
-    int redo_hassessionchanged(redo_session *session);
+    void redo_updatesavedstate(redo_session const *session,
+                               redo_position *position,
+                               void const *state);
+
+redo_updatesavedstate() alters the "extra" state data for an existing
+position, i.e. the bytes of state data beyond the area that is
+compared. (Thus, if redo_beginsession() was called without a lower
+value for cmpsize, this function will do nothing.) The state argument
+should point to a buffer of complete state data, the same as with e.g.
+redo_addposition(), but only the excess bytes will be copied into the
+position's saved state.
+
+4.2.14. redo_hassessionchanged()
+
+    int redo_hassessionchanged(redo_session const *session);
 
 redo_hassessionchanged() returns true or false depending on whether
-the move history has had any positions added or removed since the last
-call to this function. A subseqent call to this function will return
-false until the move history is changed again.
+the move history has had any positions added or removed since the
+session began, or since the last call to redo_clearsessionchanged().
 
-4.2.13. redo_clearsessionchanged()
+4.2.15. redo_clearsessionchanged()
 
     int redo_clearsessionchanged(redo_session *session);
 
-redo_clearsessionchanged() resets the session's change flag to false.
-(This is equivalent to calling redo_hassessionchanged() and ignoring
-the return value.)
-
+redo_clearsessionchanged() resets the session's change flag, so that
+subsequent calls to redo_hassessionchanged() will return false until
+the session is changed. The return value is the value of the change
+flag at the time of the call.

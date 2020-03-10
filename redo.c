@@ -20,12 +20,20 @@ struct redo_session {
     redo_position *pfree;       /* pointer to a redo_position not in use */
     redo_branch *barray;        /* the allocated redo_branch array */
     redo_branch *bfree;         /* pointer to a redo_branch not in use */
+    unsigned char *hashtable;   /* the session's hash table, if present */
+    unsigned int positioncount; /* how many positions are in the tree */
     unsigned short statesize;   /* the size of the stored game state */
     unsigned short cmpsize;     /* how much of the state to compare */
     unsigned short elementsize; /* total byte size for each position */
     unsigned char changeflag;   /* used to track changes to the session */
     unsigned char grafting;     /* should grafts leave the solution path? */
 };
+
+/* The size, in bits, of a hash table. This size is chosen to be large
+ * enough to work well with a wide range of tree sizes, while still
+ * not taking up much space.
+ */
+static int const hashtablebitsize = 8191;
 
 /* Increment a redo_position pointer.
  */
@@ -68,6 +76,82 @@ static int comparesavedstate(redo_session const *session,
                              redo_position const *position, void const *state)
 {
     return !memcmp(redo_getsavedstate(position), state, session->cmpsize);
+}
+
+/* Copy only the extra state to a position, leaving the state data
+ * used in comparisions unmodified.
+ */
+static void saveextrastate(redo_session const *session,
+                           redo_position *position, void const *state)
+{
+    memcpy((char*)(void*)redo_getsavedstate(position) + session->cmpsize,
+           (char const*)state + session->cmpsize,
+           session->statesize - session->cmpsize);
+}
+
+/*
+ * The position hash table.
+ *
+ * The hash table takes the form of a bit vector. Each bit indicates
+ * whether a hash value, modulo the hash table size, is present in the
+ * table or not. (More information than this is not really needed, as
+ * session sizes tend to be on the order of thousands rather than
+ * millions.) The downside to buckets being a single bit is that when
+ * a position is removed from the table, it is not possible to tell
+ * directly if another position hashes to that bucket, so the entire
+ * tree must be walked in order to update the hash table entry.
+ * However, the deletion of positions is not the typical use case for
+ * a history tracking library, so it makes sense to push the cost onto
+ * this situation.
+ *
+ * As the session is still functional without a hash table (just a bit
+ * slower), it is not treated as an error if it is absent.
+ */
+
+/* Reset the contents of the hash table.
+ */
+static void emptyhashtable(redo_session *session)
+{
+    if (session->hashtable)
+        memset(session->hashtable, 0, (hashtablebitsize + 7) / 8);
+}
+
+/* Set up an empty hash table.
+ */
+static int createhashtable(redo_session *session)
+{
+    session->hashtable = malloc((hashtablebitsize + 7) / 8);
+    emptyhashtable(session);
+    return session->hashtable != NULL;
+}
+
+/* Mark a hash value as being present in the session.
+ */
+static int sethashentry(redo_session *session, unsigned short value)
+{
+    int n;
+
+    if (!session->hashtable)
+        return 0;
+    n = value % hashtablebitsize;
+    session->hashtable[n / 8] |= 1 << n % 8;
+    return 1;
+}
+
+/* Return true if a hash table is present and the given value is not
+ * in it, otherwise return false. The lookup is framed in the negative
+ * because a value being in the hash table doesn't mean the actual
+ * state is present, and similarly nothing certain can be said if the
+ * hash table itself does not exist.
+ */
+static int notintable(redo_session const *session, unsigned short value)
+{
+    int n;
+
+    if (!session->hashtable)
+        return 0;
+    n = value % hashtablebitsize;
+    return !(session->hashtable[n / 8] & (1 << n % 8));
 }
 
 /*
@@ -161,6 +245,7 @@ static redo_position *getpositionstruct(redo_session *session,
             return NULL;
     savestate(session, position, state, endpoint);
     position->inuse = 1;
+    ++session->positioncount;
     return position;
 }
 
@@ -171,6 +256,7 @@ static void droppositionstruct(redo_session *session, redo_position *position)
     position->inuse = 0;
     position->prev = session->pfree;
     session->pfree = position;
+    --session->positioncount;
 }
 
 /* Grab an unused redo_branch.
@@ -267,10 +353,12 @@ static redo_position *checkforequiv(redo_session const *session,
     unsigned short hashvalue;
 
     hashvalue = gethashvalue(state, session->cmpsize);
+    if (notintable(session, hashvalue))
+        return NULL;
     for (pos = session->parray  ; pos ; pos = pos->prev) {
         for ( ; pos->inarray ; pos = incpos(session, pos)) {
-	    if (!pos->inuse)
-		continue;
+            if (!pos->inuse)
+                continue;
             if (!pos->setbetter && pos->hashvalue == hashvalue &&
                                    comparesavedstate(session, pos, state)) {
                 equiv = pos;
@@ -283,6 +371,22 @@ static redo_position *checkforequiv(redo_session const *session,
     return NULL;
 }
 
+/* Empty the hash table and repopulate it from scratch, walking the
+ * tree of positions.
+ */
+static void recalchashtable(redo_session *session)
+{
+    redo_position *pos;
+
+    if (!session->hashtable)
+        return;
+    emptyhashtable(session);
+    for (pos = session->parray  ; pos ; pos = pos->prev)
+        for ( ; pos->inarray ; pos = incpos(session, pos))
+            if (pos->inuse)
+                sethashentry(session, pos->hashvalue);
+}
+
 /* Delete the nodes in the path leading from branchpoint to leaf in
  * the session. Nodes are deleted from leaf upwards. The return value
  * is true if all positions between leaf and branchpoint are deleted.
@@ -293,18 +397,24 @@ static int prunebranch(redo_session *session, redo_position *leaf,
                        redo_position *branchpoint)
 {
     redo_position *pos;
+    int done;
 
+    done = 1;
     pos = leaf;
     while (pos && pos != branchpoint) {
-        if (pos->next)
-            return 0;
+        if (pos->next) {
+            done = 0;
+            break;
+        }
         leaf = pos;
         pos = pos->prev;
         dropmoveto(session, pos, leaf);
         droppositionstruct(session, leaf);
         session->changeflag = 1;
     }
-    return 1;
+    if (pos != leaf)
+        recalchashtable(session);
+    return done;
 }
 
 /* Change the movecount of the nodes of the subtree rooted at position
@@ -381,13 +491,13 @@ static void recalcsolutionsize(redo_position *position)
 /* Create a new session with a single position at the root.
  */
 redo_session *redo_beginsession(void const *initialstate,
-				int size, int cmpsize)
+                                int size, int cmpsize)
 {
     redo_session *session;
     int n;
 
     if (size <= 0 || size > USHRT_MAX || cmpsize < 0 || cmpsize > size)
-	return NULL;
+        return NULL;
     n = sizeof(redo_position) + size + (sizeof(void*) - 1);
     n = n - n % sizeof(void*);
     if (n > USHRT_MAX)
@@ -403,6 +513,8 @@ redo_session *redo_beginsession(void const *initialstate,
     session->pfree = NULL;
     session->barray = NULL;
     session->bfree = NULL;
+    session->positioncount = 0;
+    createhashtable(session);
     if (!newposarray(session) || !newbrancharray(session)) {
         redo_endsession(session);
         return NULL;
@@ -434,11 +546,26 @@ redo_position *redo_getfirstposition(redo_session const *session)
     return session->root;
 }
 
+/* Return the session's population count.
+ */
+int redo_getsessionsize(redo_session const *session)
+{
+    return session->positioncount;
+}
+
 /* Return a pointer to the state data associated with a position.
  */
 void const *redo_getsavedstate(redo_position const *position)
 {
     return position + 1;
+}
+
+/* Update the state data without error checking.
+ */
+void redo_updatesavedstate(redo_session const *session,
+                           redo_position *position, void const *state)
+{
+    saveextrastate(session, position, state);
 }
 
 /* Return the redo_branch for the branch originating at this position
@@ -506,6 +633,7 @@ redo_position *redo_addposition(redo_session *session,
             return NULL;
         }
     }
+    sethashentry(session, position->hashvalue);
 
     position->better = NULL;
     position->setbetter = checkequiv == redo_checklater;
@@ -569,6 +697,7 @@ redo_position *redo_dropposition(redo_session *session,
 
     droppositionstruct(session, position);
     recalcsolutionsize(prev);
+    recalchashtable(session);
     session->changeflag = 1;
     return prev;
 }
@@ -629,17 +758,21 @@ int redo_duplicatepath(redo_session *session,
 /* Find all positions with setbetter flagged and initialize their
  * better field.
  */
-void redo_setbetterfields(redo_session const *session)
+int redo_setbetterfields(redo_session const *session)
 {
     redo_position *position, *other;
+    int count;
 
+    count = 0;
     for (position = session->parray ; position ; position = position->prev) {
         for ( ; position->inarray ; position = incpos(session, position)) {
-	    if (!position->inuse)
-		continue;
+            if (!position->inuse)
+                continue;
             if (position->setbetter) {
                 other = checkforequiv(session, redo_getsavedstate(position));
                 position->better = other;
+                if (other)
+                    ++count;
                 if (other && other->movecount > position->movecount) {
                     position->better = NULL;
                     if (!other->better) {
@@ -651,11 +784,19 @@ void redo_setbetterfields(redo_session const *session)
             }
         }
     }
+    return count;
 }
 
-/* Reset the change flag and return the prior value.
+/* Return the change flag's current value.
  */
-int redo_hassessionchanged(redo_session *session)
+int redo_hassessionchanged(redo_session const *session)
+{
+    return session->changeflag;
+}
+
+/* Reset the change flag and return its prior value.
+ */
+int redo_clearsessionchanged(redo_session *session)
 {
     int flag = session->changeflag;
     session->changeflag = 0;
@@ -680,5 +821,6 @@ void redo_endsession(redo_session *session)
         b = branch->cdr;
         free(branch);
     }
+    free(session->hashtable);
     free(session);
 }
