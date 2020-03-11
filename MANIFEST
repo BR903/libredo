@@ -2,10 +2,12 @@ COPYING
 Documentation.txt
 INSTALL
 MANIFEST
+NEWS
 Makefile.in
 README
 configure.ac
 configure
+install-sh
 redo.c
 redo.h
 redo-tests.c

@@ -1,0 +1,26 @@
+
+* version 0.8: 2020 Mar 11
+
+Function redo_updatesavedstate() has been added to the API to allow
+non-comparing state data to be modified in-place.
+
+The function redo_hassessionchanged() has been renamed to the less
+misleaing redo_clearsessionchanged(). A new redo_hassessionchanged()
+function has been added which doesn't modify the session.
+
+Performance has been improved by adding a small internal hash table.
+
+A configure script has finally been added, and the makefile has been
+rewritten accordingly.
+
+
+* version 0.7: 2015 Nov 10
+
+Modified redo_beginsession() to allow extra, non-comparing bytes to be
+appended to the state data. This is the only API change.
+
+
+* version 0.6: 2013 Apr 21
+
+This is the first public release of libredo. (Prior to this, the code
+for libredo existed only as part of a larger program.)
