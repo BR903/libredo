@@ -1,4 +1,11 @@
 *.o
 *.a
 *.tar.gz
+Makefile
+config.log
+config.status
+autom4te.cache
+redo-tests
+sokoban-example
 session
+gmon.out
