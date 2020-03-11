@@ -1,0 +1,106 @@
+# Makefile for libredo.
+#
+# The list of symbolic targets:
+#
+# make [all]     = build the library, unit tests, and the example program
+# make check     = build and run the unit tests
+# make example   = build the example program (requires ncurses)
+# make install   = install the library and header file
+# make clean     = delete files created by the build process
+# make distclean = delete files created by the build and configure processes
+# make dist      = create the source distribution package
+
+.PHONY: all check example install clean distclean dist
+
+#
+# Configuration values.
+#
+
+# The library's version number.
+#
+VERSION = @PACKAGE_VERSION@
+
+# Where to install the things.
+#
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+datarootdir = @datarootdir@
+includedir = $(DESTDIR)@includedir@
+libdir = $(DESTDIR)@libdir@
+mandir = $(DESTDIR)@mandir@
+
+# Toolchain configuration.
+#
+CC = @CC@
+AR = @AR@
+INSTALL = @INSTALL@
+CFLAGS = @CFLAGS@
+ARFLAGS = @ARFLAGS@
+
+# Define if ncurses is installed.
+@NCURSES_AVAIL@
+
+#
+# The symbolic build targets.
+#
+
+.PHONY: all check example install clean distclean dist
+
+all: libredo.a check example
+
+check: redo-tests
+	./redo-tests
+	@echo "* All tests passed."
+
+install: libredo.a
+	$(INSTALL) -d $(libdir)
+	$(INSTALL) -m644 libredo.a $(libdir)
+	$(INSTALL) -d $(includedir)
+	$(INSTALL) -m644 redo.h $(includedir)
+
+clean:
+	rm -f libredo.a redo-tests sokoban-example
+	rm -f redo.o redo-tests.o sokoban-example.o
+
+distclean: clean
+	rm -rf autom4te.cache config.log config.status Makefile
+
+dist:
+	rm -f libredo-$(VERSION).tar.gz
+	mkdir libredo-$(VERSION)
+	cp -a $(shell cat MANIFEST) libredo-$(VERSION)/
+	tar -czf libredo-$(VERSION).tar.gz libredo-$(VERSION)
+	rm -r libredo-$(VERSION)
+
+#
+# The actual build recipes.
+#
+
+# The library.
+
+libredo.a: redo.o
+	$(AR) $(ARFLAGS) $@ $^
+
+redo.o: redo.c redo.h
+
+# The unit tests.
+
+redo-tests: redo-tests.o libredo.a
+redo-tests.o: redo-tests.c redo.h
+
+# The sample program.
+
+ifdef NCURSES_AVAIL
+
+example: sokoban-example
+
+sokoban-example: sokoban-example.o libredo.a
+	$(CC) $(CFLAGS) -o $@ $^ -lncurses
+
+sokoban-example.o: sokoban-example.c redo.h
+
+else
+
+example:
+
+endif

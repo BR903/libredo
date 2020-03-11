@@ -2,10 +2,11 @@ COPYING
 Documentation.txt
 INSTALL
 MANIFEST
-Makefile
+Makefile.in
 README
-redo-tests.c
+configure.ac
+configure
 redo.c
 redo.h
-types.h
+redo-tests.c
 sokoban-example.c
