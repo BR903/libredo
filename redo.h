@@ -60,11 +60,12 @@ struct redo_branch {
 /* Create and return a new redo session. initialstate points to a
  * buffer that contains the representation of the state of the
  * starting position, from which all other positions will descend.
- * size is the size of the state representation in bytes. cmpsize is
- * number of bytes in the state representation to actually compare, or
- * zero to use the entire state representation. NULL is returned if
- * the size or cmpsize arguments are invalid, or if memory for the
- * session cannot be allocated.
+ * size is the size of the state representation in bytes. It cannot be
+ * larger than ~63k (and ideally should be as small as possible).
+ * cmpsize is number of bytes in the state representation to actually
+ * compare, or zero to use the entire state representation. NULL is
+ * returned if the arguments are invalid, or if memory for the session
+ * cannot be allocated.
  */
 extern redo_session *redo_beginsession(void const *initialstate,
                                        int size, int cmpsize);

@@ -78,7 +78,51 @@ static void teardown(void)
     session = NULL;
 }
 
-/* Give (almost) all of the functionality a test run.
+/* Test the validity of state comparisons when adding positions.
+ */
+static void test_statecompares(void)
+{
+    char state[SIZE_STATE];
+    char const *s;
+    redo_position *pos, *pos2;
+    int i;
+
+    setup();
+
+    /* Verify that every comparing byte in the state is significant. */
+
+    memcpy(state, redo_getsavedstate(rootpos), SIZE_STATE);
+    for (i = 0 ; i < SIZE_CMPSTATE ; ++i) {
+        state[i] ^= 1;
+        pos = redo_addposition(session, rootpos, i, state, 0, redo_check);
+        assert(pos);
+        assert(pos->better == NULL);
+        assert(rootpos->nextcount == i + 1);
+    }
+    assert(redo_getsessionsize(session) == i + 1);
+
+    /* Verify that the non-comparing byte of state data is not examined. */
+
+    state[i] ^= 1;
+    pos2 = redo_addposition(session, rootpos, i, state, 0, redo_check);
+    assert(pos2);
+    assert(pos2->better == pos);
+
+    /* Verify that state data can be changed, but only non-comparing bytes. */
+
+    memcpy(state, redo_getsavedstate(pos2), SIZE_STATE);
+    for (i = 0 ; i < SIZE_STATE ; ++i)
+        state[i] ^= 0xFF;
+    redo_updatesavedstate(session, pos2, state);
+    s = redo_getsavedstate(pos2);
+    for (i = 0 ; i < SIZE_CMPSTATE ; ++i)
+        assert(state[i] != s[i]);
+    assert(state[i] == s[i]);
+
+    teardown();
+}
+
+/* Give the full API a test run for one of the grafting behaviors.
  */
 static void test_overall(int grafting)
 {
@@ -500,57 +544,13 @@ static void test_overall(int grafting)
     teardown();
 }
 
-/* Test the validity of state comparisons when adding positions.
- */
-static void test_statecompares(void)
-{
-    char state[SIZE_STATE];
-    char const *s;
-    redo_position *pos, *pos2;
-    int i;
-
-    setup();
-
-    /* Verify that every comparing byte in the state is significant. */
-
-    memcpy(state, redo_getsavedstate(rootpos), SIZE_STATE);
-    for (i = 0 ; i < SIZE_CMPSTATE ; ++i) {
-        state[i] ^= 1;
-        pos = redo_addposition(session, rootpos, i, state, 0, redo_check);
-        assert(pos);
-        assert(pos->better == NULL);
-        assert(rootpos->nextcount == i + 1);
-    }
-    assert(redo_getsessionsize(session) == i + 1);
-
-    /* Verify that the non-comparing byte of state data is not examined. */
-
-    state[i] ^= 1;
-    pos2 = redo_addposition(session, rootpos, i, state, 0, redo_check);
-    assert(pos2);
-    assert(pos2->better == pos);
-
-    /* Verify that state data can be changed, but only non-comparing bytes. */
-
-    memcpy(state, redo_getsavedstate(pos2), SIZE_STATE);
-    for (i = 0 ; i < SIZE_STATE ; ++i)
-        state[i] ^= 0xFF;
-    redo_updatesavedstate(session, pos2, state);
-    s = redo_getsavedstate(pos2);
-    for (i = 0 ; i < SIZE_CMPSTATE ; ++i)
-        assert(state[i] != s[i]);
-    assert(state[i] == s[i]);
-
-    teardown();
-}
-
 int main(void)
 {
     test_init();
+    test_statecompares();
     test_overall(redo_nograft);
     test_overall(redo_graft);
     test_overall(redo_copypath);
     test_overall(redo_graftandcopy);
-    test_statecompares();
     return 0;
 }

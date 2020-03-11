@@ -7,9 +7,9 @@
  * any later version.
  */
 
-#include <stdlib.h>
-#include <string.h>
-#include <limits.h>
+#include <stdlib.h>     /* malloc(), free(), size_t, and NULL */
+#include <string.h>     /* memcpy(), memset(), and memcmp() */
+#include <stdint.h>     /* uint32_t */
 #include "redo.h"
 
 /* A redo session.
@@ -35,59 +35,11 @@ struct redo_session {
  */
 static int const hashtablebitsize = 8191;
 
-/* Increment a redo_position pointer.
+/* Increment a redo_position pointer. (Although the size of a position
+ * is constant for a given session, it is not available at compile
+ * time, so the program must do its own pointer arithmetic.)
  */
 #define incpos(s, p) ((redo_position*)((char*)(p) + (s)->elementsize))
-
-/* Compute the hash value for a given state. This is the Meiyan hash
- * function, created by Sanmayce, slightly simplified.
- */
-unsigned short gethashvalue(unsigned int const *data, size_t len)
-{
-    unsigned int const m = 0x000AD3E7;
-    unsigned int const seed = 0x811C9DC5;
-    unsigned int h, k, i;
-
-    for (h = seed ; len >= 2 * sizeof *data ; len -= 2 * sizeof *data) {
-        k = *data++;
-        k = ((k << 5) | (k >> 27)) ^ *data++;
-        h = (h ^ k) * m;
-    }
-    for (i = 0 ; i < len ; ++i)
-        h ^= ((unsigned char*)data)[i] << (i * 8);
-    h *= m;
-    return h ^ (h >> 16);
-}
-
-/* Copy a state to a position.
- */
-static void savestate(redo_session const *session, redo_position *position,
-                      void const *state, int endpoint)
-{
-    position->endpoint = endpoint;
-    position->hashvalue = gethashvalue(state, session->cmpsize);
-    memcpy((void*)redo_getsavedstate(position), state, session->statesize);
-}
-
-/* Test if the given state is identical to the one saved at a
- * position.
- */
-static int comparesavedstate(redo_session const *session,
-                             redo_position const *position, void const *state)
-{
-    return !memcmp(redo_getsavedstate(position), state, session->cmpsize);
-}
-
-/* Copy only the extra state to a position, leaving the state data
- * used in comparisions unmodified.
- */
-static void saveextrastate(redo_session const *session,
-                           redo_position *position, void const *state)
-{
-    memcpy((char*)(void*)redo_getsavedstate(position) + session->cmpsize,
-           (char const*)state + session->cmpsize,
-           session->statesize - session->cmpsize);
-}
 
 /*
  * The position hash table.
@@ -107,6 +59,28 @@ static void saveextrastate(redo_session const *session,
  * As the session is still functional without a hash table (just a bit
  * slower), it is not treated as an error if it is absent.
  */
+
+/* Compute the hash value for a given state. Every stored block of
+ * state data is assigned a hash value, whether or not a hash table is
+ * being used. (This is the Meiyan hash function, created by Sanmayce,
+ * slightly simplified.)
+ */
+unsigned short gethashvalue(unsigned int const *data, size_t len)
+{
+    uint32_t const m = 0x000AD3E7;
+    uint32_t const seed = 0x811C9DC5;
+    uint32_t h, k, i;
+
+    for (h = seed ; len >= 2 * sizeof *data ; len -= 2 * sizeof *data) {
+        k = *data++;
+        k = ((k << 5) | (k >> 27)) ^ *data++;
+        h = (h ^ k) * m;
+    }
+    for (i = 0 ; i < len ; ++i)
+        h ^= ((unsigned char*)data)[i] << (i * 8);
+    h *= m;
+    return (h ^ (h >> 16)) & 0xFFFF;
+}
 
 /* Reset the contents of the hash table.
  */
@@ -155,18 +129,66 @@ static int notintable(redo_session const *session, unsigned short value)
 }
 
 /*
+ * State data handling.
+ */
+
+/* The state data is stored immediately following its position struct.
+ */
+static void const *getstatedata(redo_position const *position)
+{
+    return position + 1;
+}
+
+/* Same, but accepting and returning a non-const pointer.
+ */
+static void *getwriteablestatedata(redo_position *position)
+{
+    return position + 1;
+}
+
+/* Copy a state to a position.
+ */
+static void savestatedata(redo_session const *session, redo_position *position,
+                          void const *state, int endpoint)
+{
+    position->endpoint = endpoint;
+    position->hashvalue = gethashvalue(state, session->cmpsize);
+    memcpy(getwriteablestatedata(position), state, session->statesize);
+}
+
+/* Test if the given state is identical to the one stored for a
+ * position.
+ */
+static int comparestatedata(redo_session const *session,
+                            redo_position const *position, void const *state)
+{
+    return !memcmp(getstatedata(position), state, session->cmpsize);
+}
+
+/* Copy only the extra state to a position, leaving the state data
+ * used in comparisions unmodified.
+ */
+static void saveextrastatedata(redo_session const *session,
+                               redo_position *position, void const *state)
+{
+    memcpy((char*)getwriteablestatedata(position) + session->cmpsize,
+           (char const*)state + session->cmpsize,
+           session->statesize - session->cmpsize);
+}
+
+/*
  * Memory management.
  *
- * redo_position structs are allocated in arenas, or chunks, rather
- * than have each struct be a separate allocation. Unused structs are
- * kept in a linked list by reusing the prev field. (The inuse field
- * indicates whether or not a struct is currently being used.) The
- * pfree field of redo_session holds the head of this linked list. In
- * addition, each chunk is itself a member in a linked list: the last
- * element in each chunk is never used as a redo_position; instead,
- * its prev field points to the next chunk in the list of chunks. The
- * parray field of redo_session holds the head of this linked list.
- * Every redo_position struct is immediately followed by its own state
+ * redo_position structs are allocated in chunks, rather than have
+ * each struct be a separate allocation. Unused structs are kept in a
+ * linked list by reusing the prev field. (The inuse field indicates
+ * whether or not a struct is currently being used.) The pfree field
+ * of redo_session holds the head of this linked list. In addition,
+ * each chunk is itself a member in a linked list: the last element in
+ * each chunk is never used as a redo_position; instead, its prev
+ * field points to the next chunk in the list of chunks. The parray
+ * field of redo_session holds the head of this linked list. Every
+ * redo_position struct is immediately followed by its own state
  * buffer. Because the state buffer's size is determined by the
  * caller, iterating over the elements of a chunk requires special
  * code to increment the element pointer.
@@ -243,7 +265,7 @@ static redo_position *getpositionstruct(redo_session *session,
     if (!session->pfree)
         if (!newposarray(session))
             return NULL;
-    savestate(session, position, state, endpoint);
+    savestatedata(session, position, state, endpoint);
     position->inuse = 1;
     ++session->positioncount;
     return position;
@@ -360,7 +382,7 @@ static redo_position *checkforequiv(redo_session const *session,
             if (!pos->inuse)
                 continue;
             if (!pos->setbetter && pos->hashvalue == hashvalue &&
-                                   comparesavedstate(session, pos, state)) {
+                                   comparestatedata(session, pos, state)) {
                 equiv = pos;
                 while (equiv->better)
                     equiv = equiv->better;
@@ -496,11 +518,11 @@ redo_session *redo_beginsession(void const *initialstate,
     redo_session *session;
     int n;
 
-    if (size <= 0 || size > USHRT_MAX || cmpsize < 0 || cmpsize > size)
+    if (size <= 0 || cmpsize < 0 || cmpsize > size)
         return NULL;
     n = sizeof(redo_position) + size + (sizeof(void*) - 1);
     n = n - n % sizeof(void*);
-    if (n > USHRT_MAX)
+    if (n > 0xFFFF)
         return NULL;
     session = malloc(sizeof *session);
     if (!session)
@@ -557,7 +579,7 @@ int redo_getsessionsize(redo_session const *session)
  */
 void const *redo_getsavedstate(redo_position const *position)
 {
-    return position + 1;
+    return getstatedata(position);
 }
 
 /* Update the state data without error checking.
@@ -565,7 +587,7 @@ void const *redo_getsavedstate(redo_position const *position)
 void redo_updatesavedstate(redo_session const *session,
                            redo_position *position, void const *state)
 {
-    saveextrastate(session, position, state);
+    saveextrastatedata(session, position, state);
 }
 
 /* Return the redo_branch for the branch originating at this position
@@ -595,13 +617,12 @@ redo_position *redo_getnextposition(redo_position *position, int move)
 
 /* Add a new node to the session, leading from prev via move. If such
  * a node already exists, it is returned; otherwise, the node is
- * created, fully initialized, and returned. In the latter case,
- * gameplay supplies the game state for the new node. If checkequiv's
- * value is redo_check, then the function will check for equivalent
- * nodes in the session. If one is found, the better field will be
- * intialized to point to it, or, if the new node is actually the
- * other node's better, the latter's subtree is grafted onto the new
- * node directly.
+ * created, fully initialized, and returned. In the latter case, the
+ * state data is stored with the new position. If checkequiv's value
+ * is redo_check, then the function will check for equivalent nodes in
+ * the session. If one is found, the better field will be intialized
+ * to point to it, or, if the new node is actually the other node's
+ * better, grafting behavior with be applied.
  */
 redo_position *redo_addposition(redo_session *session,
                                 redo_position *prev, int move,
@@ -714,7 +735,7 @@ int redo_suppresscycle(redo_session *session, redo_position **pposition,
     int n;
 
     for (p = *pposition, n = 0 ; p ; p = p->prev, ++n) {
-        if (comparesavedstate(session, p, state)) {
+        if (comparestatedata(session, p, state)) {
             if (n < prunelimit)
                 prunebranch(session, *pposition, p);
             *pposition = p;
@@ -743,7 +764,7 @@ int redo_duplicatepath(redo_session *session,
         if (!branch)
             break;
         next = redo_addposition(session, dest, branch->move,
-                                redo_getsavedstate(branch->p),
+                                getstatedata(branch->p),
                                 branch->p->endpoint, 0);
         if (!next)
             return 0;
@@ -769,7 +790,7 @@ int redo_setbetterfields(redo_session const *session)
             if (!position->inuse)
                 continue;
             if (position->setbetter) {
-                other = checkforequiv(session, redo_getsavedstate(position));
+                other = checkforequiv(session, getstatedata(position));
                 position->better = other;
                 if (other)
                     ++count;
