@@ -10,8 +10,6 @@
 #ifndef _libredo_redo_h_
 #define _libredo_redo_h_
 
-#include "types.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,6 +17,17 @@ extern "C" {
 /* The library version: 0.8
  */
 #define REDO_LIBRARY_VERSION 0x0008
+
+/*
+ * Types.
+ */
+
+/* The list of objects used by the library. redo_session is opaque;
+ * the other two are defined here.
+ */
+typedef struct redo_session redo_session;
+typedef struct redo_position redo_position;
+typedef struct redo_branch redo_branch;
 
 /* The information associated with a visited state.
  */
@@ -43,6 +52,10 @@ struct redo_branch {
     redo_position *p;           /* the position that the move leads to */
     int move;                   /* the move that this branch represents */
 };
+
+/*
+ * Functions.
+ */
 
 /* Create and return a new redo session. initialstate points to a
  * buffer that contains the representation of the state of the
