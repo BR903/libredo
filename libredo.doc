@@ -1,0 +1,635 @@
+libredo / Redo Library / Mar 2020 / a state history management library
+
+.Synopsis
+libredo is a simple library that makes it easy to add powerful undo
+and redo commands to a logic puzzle game (or similar sorts of
+programs). libredo takes responsiblity for managing a branching undo
+state history without needing to be tightly integrated into the
+calling program.
+
+.section Overview
+
+Many such programs that provide undo and redo commands will only
+remember a single linear sequence. That is, undone states will only be
+redo-able while a user is using these two commands. As soon as the
+user takes some other action that changes state in a new way, all
+remaining undone states are forgotten. This limited functionality is
+common, if not ubiquitous. In contrast, libredo provides functions
+that allow a program to manage a complete history of user actions. The
+program can then let the user navigate around this history.
+
+The library assists the calling program by organizing and remembering
+a complete history of visited states. When undo is used to return to a
+previous state, the user can make other changes without losing
+history. Then, if undo is used to return to the branch point a second
+time, both sequences will be available for redoing. The user's history
+is no longer linear. Instead, it takes the form of a tree, rooted at
+the starting state and bifurcating.
+
+With this history available, libredo will detect when a user returns
+to a previously-seen state via a new sequence of actions. The calling
+program can then notify the user that their latest path has led to
+familiar territory. If this new sequence is more efficient, however,
+libredo can also automate the process of promoting the new sequence
+over the old one.
+
+.section Candidate Programs
+
+libredo was originally designed to be used with programs that
+implement a certain class of logic puzzles. Logic puzzles typically
+involve rearranging or altering elements of a well-defined system, and
+there are a certain set of features that often arise:
+
+.list
+. There is a well-defined initial state, and one or more solution
+states.
+. There is no hidden information, which would reduce the desirability
+of giving the user an undo/redo facility in the first place. (For
+example, the solitaire game Klondike would not be a good candidate,
+since at the start many of the cards are face down.)
+. There is a limited and well-defined set of actions available to the
+user at any given point. This is in contrast to games that depend on
+the timing of user actions, since then the timing becomes a necessary
+component of the action, causing the total set of actions to expand
+significantly. (Such games typically don't provide undo facilities in
+any case.)
+. The complete state of the system can typically be encoded in a small
+amount of space, making it feasible to maintain an unabridged move
+history in memory.
+. The main challenge to the user is to solve the puzzle -- but after
+that, there is usually a secondary challenge of trying to improve
+one's solution, typically by solving it in fewer steps. (A logic
+puzzle with only one possible solution path would therefore likely not
+find this library useful.)
+
+Sokoban is a good example of a program that has all of these features.
+There are only four possible actions (up, down, left, and right), and
+the complete state can be encoded by recording the posible of every
+moveable object. The exact size of this state would depend on the
+level design, but the vast majority of Sokoban levels would need less
+than 100 bytes.
+
+Freecell is another example. All cards are face-up throughout the
+game. There are 240 different actions: there are 16 places to move a
+card from, and 15 places to move it to. At most points in the game,
+however, there are only a dozen or so available moves. Given the
+constraints of the layout, only a single byte is needed to encode a
+card's location, so the complete state can be contained in 52 bytes.
+On the other hand, freecell would ultimately not be a good candidate,
+since its games are generally not complex enough to benefit from an
+advanced undo/redo facility.
+
+As the final point above suggests, the library is built with the
+assumption that it is normal to be able to reach a given state through
+many different sequences of steps, and that in such situations the
+user will generally want to focus on the shortest sequence available.
+In order to avoid making it too difficult to navigate a complex
+solution space, the session's history is required to maintain a strict
+tree structure. Two different sequences of user actions will therefore
+always create two different positions in the history, even if they
+both lead to the same state. To capture this equivalence, the two
+positions will be linked by an attribute called the "better" pointer.
+These better pointers connect equivalent positions, outside of the
+tree's hierarchical structure.
+
+.section Use Cases
+
+A libredo session is initialized by the caller providing the initial
+state, which becomes the root of the tree representing the history.
+Every user action will form a branch connecting one state to the next.
+
+To give some concrete examples, imagine a game where the user has
+three possible actions, which are called A, B, and C. The user begins
+by performing a sequence of actions: A, A, and B. The program records
+the state for each. The session history, represented as a tree, now
+contains four positions, and looks like this:
+
+.formatted
+        0. (Start)
+        |_ 1. A
+           |_ 2. A
+              |_ 3. B
+
+(In this diagram each position is identified by a number. Each
+position is also labeled with the last action taken by the user, but
+in reality the action should label the branch going to the position
+from the parent. That would make for an even more confusing ASCII
+diagram, however.)
+
+Now imagine that the user undoes their last action, B, and makes a new
+action, C. The history now looks like this:
+
+.formatted
+        0. (Start)
+        |_ 1. A
+           |_ 2. A
+              |_ 3. B
+              |_ 4. C
+
+If the user then undoes this action, they would find themselves back
+at position 2. At this point the program indicates to the user that
+they have two redo options, either B or C. If the user decides to redo
+B, they will resume the state at position 3, and can take a new action
+from there.
+
+.formatted
+        0. (Start)
+        |_ 1. A
+           |_ 2. A
+              |_ 3. B
+              |  |_ 5. B
+              |_ 4. C
+
+Now, assume that the user has returned to the starting state and tried
+a couple of different actions from there. The history now contains ten
+positions:
+
+.formatted
+        0. (Start)
+        |_ 1. A
+        |  |_ 2. A
+        |     |_ 3. B
+        |     |  |_ 5. B
+        |     |_ 4. C
+        |_ 6. B
+           |_ 7. C
+           |_ 8. B
+
+Now imagine that their next action, another B from position 8, happens
+to take them to the same state as if they had just done A from the
+starting point, i.e. position 1. In that case, when the new position
+is added to the session's history, this fact will be detected and
+the new position's better pointer will be set:
+
+.formatted
+        0. (Start)
+        |_ 1. A
+        |  |_ 2. A
+        |     |_ 3. B
+        |     |  |_ 5. B
+        |     |_ 4. C
+        |_ 6. B
+           |_ 7. C
+           |_ 8. B
+              |_ 9. B [1]
+
+The action still creates a new position, but one that has its better
+pointer (represented in the diagram in square brackets) to point to
+position 1. The program can use this to infrom the user that they have
+moved into a previously explored state.
+
+Now imagine that the user returns to the initial state and executes a
+C action, and that this happens to take them to a state that is
+identical to the state at position 2. This differs from the previous
+example in that the new position marks a shorter path to the same
+state, so the older position will have its better pointer updated,
+instead:
+
+.formatted
+        0. (Start)
+        |_ 1. A
+        |  |_ 2. A [10]
+        |     |_ 3. B
+        |     |  |_ 5. B
+        |     |_ 4. C
+        |_ 6. B
+        |  |_ 7. C
+        |  |_ 8. B
+        |     |_ 9. B [1]
+        |_ 10. C
+
+This is all that will happen if grafting behavior is disabled. If
+grafting is enabled, however, then the library will go further, and
+remove the subtree rooted at position 2 and place it under position 10
+instead:
+
+.formatted
+        0. (Start)
+        |_ 1. A
+        |  |_ 2. A [10]
+        |_ 6. B
+        |  |_ 7. C
+        |  |_ 8. B
+        |     |_ 9. B [1]
+        |_ 10. C
+           |_ 3. B
+           |  |_ 5. B
+           |_ 4. C
+
+The user can thus continue from the new position, with the shorter
+prefix having been substituted into all of their previously explored
+paths. Position 2 will remain in the history, but as a leaf node,
+with its better pointer indicating its replacement.
+
+If at some point the user reaches an endpoint, i.e. one of the
+solution states, then this fact will become an attribute of the entire
+solution path. Each position in a solution path knows which action
+leads towards the solution. When there are multiple solutions in the
+history, a position will identify the shortest solution path available
+for each action.
+
+.section The Redo API: Types
+
+There two structs that are used to build the history tree. Their
+fields are exposed in the redo header file, and callers are free to
+examine them. Their contents should never be modified directly,
+however; only via the API.
+
+(The libredo API also declares a third struct, a `redo_session`, 
+which is opaque to the calling program.)
+
+.subsection `!redo_position!`
+
+The central data structure of libredo is the `redo_position` struct.
+Each `redo_position` marks a position in the user's history tree: a
+state that can be reached by a specific sequence. A `redo_position`
+provides the following fields:
+
+.table
+. `redo_position~*!prev!`
+. This field identifies the position's "parent" in the history tree.
+The initial position has a `prev` value of `NULL`; all other positions
+have a valid pointer to the position preceding it in the history.
+. `redo_branch~*!next!`
+. This field points to a linked list of branches. Each branch
+represents an action that leads from this position to a next one. This
+value is `NULL` if there are no actions originating from this
+position. The list is ordered by recency of usage: thus, the first
+branch in the list is the branch that was most recently created
+(by `redo_addposition()`) or accessed (by `redo_getnextposition()`).
+The fields `prev` and `next` together create the tree structure of the
+session history.
+. `unsigned~short~!nextcount!`
+. This field gives the number of branches present in the linked list
+pointed to by `next`.
+. `unsigned~short~!movecount!`
+. This field is the size of the path ending at this position -- i.e.
+the number of actions that were taken to arrive here from the starting
+point.
+. `redo_position~*!better!`
+. If this field is not `NULL`, it points to another position in the
+session history that has the same game state as this one, but in fewer
+moves.
+. `unsigned~short~!endpoint!`
+. This field is non-zero if this position is a solution state. It is
+set by the caller via `redo_addposition()`.
+. `unsigned~short~!solutionsize!`
+. This field is zero if there are no valid solution paths that pass
+through this position. Otherwise, it holds the total length of the
+solution path. If more than one solution path passes through this
+position, then `solutionsize` holds the length of the shortest
+such path.
+
+.subsection `!redo_branch!`
+
+The `redo_branch` struct represents a branch connecting one position
+to another in the history tree. Its fields are:
+
+.table
+. `int~!move!`
+. This is the user action that labels the branch. The value of `move`
+is not constrained by the library, other than being an integer. The
+calling program is free to use whatever representation of user actions
+that is convenient, as long as it is consistent.
+. `redo_position~*!p!`
+. This field holds the position that the action results in -- in other
+words, the branch's end point.
+. `redo_branch~*!cdr!`
+. Branches are stored in a linked list; this field either points to
+the next branch in the list, or is `NULL` to mark the end of the list.
+(The name `cdr` comes from the traditional Lisp function for moving
+through a linked list, and was used because the more common name
+"next" might have invited confusion with the field of that name in the
+`redo_position` struct.)
+
+.section The Redo API: Functions
+
+The following provides a brief description of each function in the
+library's API.
+
+.subsection `!redo_beginsession!()`
+
+.grid
+l                                   l
+`redo_session *!redo_beginsession!(``void const *!initialstate!,`
+                                    `int !size!,`
+                                    `int !cmpsize!)`
+
+`redo_beginsession()` creates a new session, with an empty history.
+The return value is a pointer to the session. Most of the other API
+functions require this value as their first argument.
+
+`initialstate` is a pointer to a buffer that contains a representation
+of the starting position. This position will become the root of the
+tree representing the history.
+
+`size` is the number of bytes in the state representation. Every state
+will be stored in the history as a buffer of this size. The library
+does not examine the contents of this data, other than to compare it
+with buffers representing other states. The calling program is free to
+use whatever encoding is convenient, so long as it is consistent (i.e.
+a given state is always encoded to the same set of bytes).
+
+That said, `cmpsize` can be used to specify how many bytes of the
+state data are to be used when comparing two buffers. Any bytes after
+`cmpsize` in the state data are stored by the library, but are
+otherwise ignored. If `cmpsize` is zero, then it is treated as being
+equal to `size`, i.e. all bytes are significant.
+
+(Please note that if the calling program uses this feature and stores
+extra bytes in the state data, the library has no way to validate
+these bytes. Thus, if grafting occurs, or if `redo_duplicatepath()` is
+used to make copies of positions, inconsistenties can be introduced
+across a solution path. Whether or not this happens is entirely
+dependent on how the extra state data is being used by the calling
+program, of course. For programs where this is an issue, the caller
+may need to use `redo_updatesavedstate()` to manually fix up the extra
+state data for the transferred positions.)
+
+.subsection `!redo_endsession!()`
+
+.grid
+l                        l
+`void !redo_endsession!(``redo_session *!session!)`
+
+Call `redo_endsession()` to close the session and deallocate all
+memory associated with it.
+
+.subsection `!redo_getfirstposition!()`
+
+.grid
+l                              l
+`void !redo_getfirstposition!(``redo_session const *!session!)`
+
+This function returns the initial position of the session history,
+created in the call to `redo_beginsession()`.
+
+.subsection `!redo_getsessionsize!()`
+
+.grid
+l                            l
+`void !redo_getsessionsize!(``redo_session const *!session!)`
+
+This function returns the number of positions currently stored in the
+session.
+
+.subsection `!redo_addposition!()`
+
+.grid
+l                                   l
+`redo_position *!redo_addposition!(``redo_session *!session!,`
+                                    `redo_position *!prev!,`
+                                    `int !move!,`
+                                    `void const *!state!,`
+                                    `int !endpoint!,`
+                                    `int !checkequiv!)`
+
+The `redo_addposition()` function is how every position after the
+first is added to the session history. As with most API functions, the
+first argument identifies the session that is being added to.
+
+`prev` identifies the position that the action is being applied to, and
+`move` identifies the action itself. If this action has already been
+made and is recorded in the history, then `redo_addposition()` will
+simply return it directly. Otherwise, it will create a new position
+and return it after adding it to the history tree.
+
+`state` points to a buffer that contains the representation of the new
+position's state. The library will make a copy of this data, so the
+calling program is free to reuse or deallocate the buffer after
+`redo_addposition()` returns.
+
+A true value for `endpoint` indicates that the new position being
+created is a solution state. In this case, the path ending in the
+newly created position will be marked as being a solution. The
+`solutionsize` field will be set, not just in the returned position
+but potentially in all positions along the solution path.
+
+The `checkequiv` argument controls how the library checks for
+identical states in the history. It can take one of three values:
+
+.table
+. `redo_nocheck`
+. No check is made. This setting would be used if the calling program
+never examines the better pointers, or if it already knows that the
+current state is unique.
+. `redo_check`
+. The library checks for other positions in the history that have
+identical state data, and sets the better pointers appropriately if
+so. This is the usual case.
+. `redo_checklater`
+. The position is not checked, but is marked as needing to be checked.
+This check will then take place during the next call to
+`redo_setbetterfields()`.
+
+In the case where the check is performed: If another position is found
+with the same state but a smaller move count, the position returned by
+the function will have its better pointer set to the other position.
+If on the other hand the position found has a larger move count, then
+it will have its better pointer set instead, to point to the newly
+created position. In addition, it might have its subtree of positions
+grafted onto the new position, depending on the current grafting
+behavior. See below for more details.
+
+.subsection `!redo_setgraftbehavior!()`
+
+.grid
+l                             l
+`int !redo_setgraftbehavior!(``redo_session *!session!,`
+                              `int !grafting!);`
+
+`redo_setgraftbehavior()` determines the grafting behavior of
+`redo_addposition()`. The return value is the setting's value at the
+time the function was called.
+
+When a position is added that has the same state as an already
+existing position but with a smaller move count, there are four
+possible actions that the library can take, depending on the setting:
+
+.table
+. `redo_nograft`
+. Do nothing (beyond setting the better pointer appropriately).
+. `redo_copypath`
+. Copy the shortest solution path in the older position's subtree over
+to the new position. (If no solution path exists from the older
+position, then this is the same as `redo_nograft`.)
+. `redo_graft`
+. Transfer the entire subtree currently rooted at the older position
+over to the new position. The older position thus becomes a leaf node,
+and any solutions that the subtree contains will inherit the
+improvement in size. This is the default behavior setting.
+. `redo_graftandcopy`
+. Graft the subtree, as with `redo_graft`, but then copy the shortest
+solution back to the older position, so that it is not left as a leaf
+node. (If no solution path exists in the grafted subtree, then this
+behavior is the same as `redo_graft`.)
+
+.subsection `!redo_getsavedstate!()`
+
+.grid
+l                                  l
+`void const *!redo_getsavedstate!(``redo_position const *!position!)`
+
+This function returns a pointer to the session's copy of the state
+data for the given position. As with the other data associated with a
+position, the contents of this buffer should not be modified by the
+caller. (That said, see `redo_updateextrastate()` below.)
+
+.subsection `!redo_getnextposition!()`
+
+.grid
+l                                       l
+`redo_position *!redo_getnextposition!(``redo_position const *!position!,`
+                                        `int !move!)`
+
+`redo_getnextposition()` traverses a branch in the history tree,
+starting from `position` and following the branch labeled with
+`move` to another position, which is returned. `NULL` is returned if
+there is no branch labeled with `move` at `position`.
+
+This function also has the effect of causing the requested branch to
+be moved to the front of the linked list (in the parent position).
+Thus this function keeps the linked list of branches in order of the
+most recently accessed.
+
+.subsection `!redo_dropposition!()`
+
+.grid
+l                                    l
+`redo_position *!redo_dropposition!(``redo_session *!session!,`
+                                     `redo_position *!position!)`
+
+This function deletes `position` from the session's history. In order
+for a position to be removed from the history, it must not have any
+branches to other positions. The return value is the position's parent
+if the deletion was successful. If the deletion was unsuccessful,
+`position` is returned, unchanged, instead.
+
+.subsection `!redo_updatesavedstate!()`
+
+.grid
+l                              l
+`void !redo_updatesavedstate!(``redo_session const *!session!,`
+                               `redo_position *!position!,`
+                               `void const *!state!)`
+
+This function modifies the "extra" state data stored for a position --
+i.e. the non-comparing bytes of state data. (Thus, if
+`redo_beginsession()` was called without a lower value for `cmpsize`,
+this function will have no effect.) The `state` argument should point
+to a buffer of complete state data, the same as would be passed to
+`redo_addposition()`, but only the excess bytes will be copied into
+the position's state data.
+
+.subsection `!redo_setbetterfields!()`
+
+.grid
+l                            l
+`int !redo_setbetterfields!(``redo_session *!session!)`
+
+This function acts on every position in the session that was added
+with `redo_checklater` as the final argument to `redo_addposition()`.
+Every such position has its better pointer correctly initialized, as
+would have been done if `redo_addposition()` had been called with
+`redo_check`. Note however that no grafting will occur: this function
+does not change the history tree, or anything other than the better
+pointers.
+
+The intended use case for `redo_setbetterfields()` is for recreating a
+session's history tree from scratch, as e.g. from a save file. Without
+the ability to delay this step, a new session would have to create
+positions in the same order that they were created originally, in
+order to get the same network of better pointers. The alternative
+would be for the program to record all better pointers, and then
+recreate them directly.
+
+With this feature, the code that saves the session history can simply
+record a flag indicating which positions have non-`NULL` better
+pointers. Then, the code that recreates the history from the saved
+data can use this flag to decide whether to call `redo_addposition()`
+with `redo_nocheck` or `redo_checklater`. And then
+`redo_setbetterfields()` is called once after the full history is
+present in the session.
+
+.subsection `!redo_suppresscycle!()`
+
+.grid
+l                          l
+`int !redo_suppresscycle!(``redo_session *!session!,`
+                           `redo_position **!pposition!,`
+                           `void const *!state!,`
+                           `int !prunelimit!)`
+
+`redo_suppresscycle()` looks for matching states along a path. It is
+similar to what `redo_addposition()` does when checking for
+pre-existing identical state, except that it is constrained to only
+examine the positions along a single path.
+
+The typical use case for this function is to call it just before
+calling `redo_addposition()`, to guard against creating a "loop" via
+the better pointers. (This situation is not forbidden by the library,
+but may be unwanted by the calling program for various reasons.)
+
+The `pposition` argument is the address of the position that marks the
+end of the path to be examined. `state` points to a buffer that
+contains the state data for the as-yet uncreated position. (In
+practical terms, `pposition` and `state` correspond to the `prev` and
+`state` arguments that will be passed to `redo_addposition()`.)
+
+If a matching state is found among the given position's ancestors,
+then the position pointed to by `pposition` will be overwritten to
+point to the position with the matching state, and the return value
+will be true. A return value of false indicates that no matching state
+was found.
+
+The `prunelimit` argument specifies a distance limit. If this argument
+is positive, then when a matching state is found among the ancestors
+inside that limit, the intervening positions will be automatically
+deleted, as per `redo_dropposition()`. This deletion takes place
+starting at the endmost position and going upwards, so if a position
+is encountered that has other branches, no further deletions will take
+place.
+
+.subsection `!redo_duplicatepath!()`
+
+.grid
+l                          l
+`int !redo_duplicatepath!(``redo_session *!session!,`
+                           `redo_position *!dest!,`
+                           `redo_position const *!source!)`
+
+This function copies a solution path, starting at `source` and going
+forward to an endpoint, over to `dest`. The two positions should have
+identical states, thus typically `dest` is simply the better pointer
+of the `source` position. If there is more than one solution path that
+passes through `source`, the path with the smallest solution size is
+selected.
+
+The return value is true if the copy was completed successfully. If
+`source` is not part of a solution path, then nothing is copied and
+false is returned.
+
+This function calls `redo_addposition()` internally to copy the
+positions, therefore it is not an error if some (or all) of the
+positions being copied are already present at `dest`.
+
+.subsection `!redo_hassessionchanged!()`
+
+.grid
+l                              l
+`int !redo_hassessionchanged!(``redo_session const *!session!)`
+
+This function returns true if the session history has been modified
+since the session was created, or since the last call to
+`redo_clearsessionchanged()`.
+
+.subsection `!redo_clearsessionchanged!()`
+
+.grid
+l                                l
+`int !redo_clearsessionchanged!(``redo_session *!session!)`
+
+This function resets the session's change flag, so that subsequent
+calls to `redo_hassessionchanged()` will return false until the
+session is changed again. The return value is the value of the change
+flag at the time the function was called.

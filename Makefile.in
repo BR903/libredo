@@ -52,15 +52,18 @@ check: redo-tests
 	./redo-tests
 	@echo "* All tests passed."
 
-install: libredo.a
+install: libredo.a libredo.3
 	$(INSTALL) -d $(libdir)
 	$(INSTALL) -m644 libredo.a $(libdir)
 	$(INSTALL) -d $(includedir)
 	$(INSTALL) -m644 redo.h $(includedir)
+	$(INSTALL) -d $(mandir)
+	$(INSTALL) -m644 libredo.3 $(mandir)
 
 clean:
 	rm -f libredo.a redo-tests sokoban-example
 	rm -f redo.o redo-tests.o sokoban-example.o
+	rm -f libredo.html libredo.3 libredo.txt
 
 distclean: clean
 	rm -rf autom4te.cache config.log config.status Makefile
@@ -104,3 +107,8 @@ else
 example:
 
 endif
+
+# The documentation
+
+libredo.3 libredo.html libredo.txt: libredo.doc mkdocs
+	./mkdocs --all $<
