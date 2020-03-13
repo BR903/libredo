@@ -1,5 +1,4 @@
 COPYING
-Documentation.txt
 INSTALL
 MANIFEST
 NEWS
@@ -8,6 +7,8 @@ README
 configure.ac
 configure
 install-sh
+libredo.doc
+mkdocs
 redo.c
 redo.h
 redo-tests.c
