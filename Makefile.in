@@ -32,10 +32,10 @@ mandir = $(DESTDIR)@mandir@
 # Toolchain configuration.
 #
 CC = @CC@
-AR = @AR@
-INSTALL = @INSTALL@
 CFLAGS = @CFLAGS@
-ARFLAGS = @ARFLAGS@
+AR_RC = @AR_RC@
+RANLIB = @RANLIB@
+INSTALL = @INSTALL@
 
 # Define if ncurses is installed.
 @NCURSES_AVAIL@
@@ -44,21 +44,21 @@ ARFLAGS = @ARFLAGS@
 # The symbolic build targets.
 #
 
-.PHONY: all check example install clean distclean dist
+.PHONY: all check example docs install clean distclean dist
 
-all: libredo.a check example
+all: libredo.a check example docs
 
 check: redo-tests
 	./redo-tests
-	@echo "* All tests passed."
+	: All tests passed.
 
 install: libredo.a libredo.3
 	$(INSTALL) -d $(libdir)
 	$(INSTALL) -m644 libredo.a $(libdir)
 	$(INSTALL) -d $(includedir)
 	$(INSTALL) -m644 redo.h $(includedir)
-	$(INSTALL) -d $(mandir)
-	$(INSTALL) -m644 libredo.3 $(mandir)
+	$(INSTALL) -d $(mandir)/man3
+	$(INSTALL) -m644 libredo.3 $(mandir)/man3
 
 clean:
 	rm -f libredo.a redo-tests sokoban-example
@@ -82,7 +82,8 @@ dist:
 # The library.
 
 libredo.a: redo.o
-	$(AR) $(ARFLAGS) $@ $^
+	$(AR_RC) $@ $^
+	$(RANLIB) $@
 
 redo.o: redo.c redo.h
 
@@ -110,5 +111,13 @@ endif
 
 # The documentation
 
-libredo.3 libredo.html libredo.txt: libredo.doc mkdocs
-	./mkdocs --all $<
+docs: libredo.3 libredo.html
+
+libredo.3: libredo.doc mkdocs
+	perl mkdocs --man $<
+
+libredo.html: libredo.doc mkdocs
+	perl mkdocs --html $<
+
+libredo.txt: libredo.doc mkdocs
+	perl mkdocs --text $<

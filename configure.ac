@@ -9,17 +9,18 @@ AC_CONFIG_SRCDIR([redo.c])
 dnl * Verify the toolchain.
 
 test -z "$CFLAGS" && CFLAGS="-Wall -Wextra -O3"
-test -z "$ARFLAGS" && ARFLAGS="crs"
+test -z "$ARFLAGS" && ARFLAGS="rc"
 
 AC_PROG_CC
 AC_PROG_INSTALL
+AC_PROG_RANLIB
 AC_CHECK_TOOL([AR], [ar], [:])
 if test "$AR" = ":" ; then
   AC_MSG_ERROR([Cannot find the library archiver (ar).
     Please set AR to point to the archiver program, and ARFLAGS to the options
     used to create a new archive.])
 fi 
-AC_SUBST([ARFLAGS])
+AC_SUBST([AR_RC], ["$AR $ARFLAGS"])
 
 
 dnl * Checks for the standard C library features that libredo uses.
