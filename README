@@ -1,3 +1,5 @@
+REDO LIBRARY
+
 libredo is a simple library that makes it easy to add powerful undo
 and redo commands to a logic puzzle game (or similar type of program).
 Many such programs that provide undo and redo commands will remember
@@ -7,29 +9,61 @@ the undone states are forgotten. This limited functionality is common,
 if not ubiquitous. I would like to see more programs offer something
 better: that is what this library is provided for.
 
-The file Documentation.txt describes what libredo can do and how the
-API is used. There is also an example program included
-(sokoban-example) which provides a demonstration of the API's
-capabilities and how to use it.
 
-These programs are copyright (C) 2013 by Brian Raiter. These programs
-are free software; you can redistribute them and/or modify them under
-the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2 of the License, or (at your
-option) any later version. These programs are distributed in the hope
-that they will be useful, but WITHOUT ANY WARRANTY; without even the
-implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-PURPOSE. See the GNU General Public License, included in this
-distribution in the file COPYING, for more details.
+INSTALLATION
+
+The libredo package provides the usual facility for building and
+installing via:
+
+    ./configure
+    make
+    make install
+
+The redo library is very simple. It consists of one C file and one
+header file, and requires no unusual support from the compiler. Thus,
+an alternative to installing the library is just to copy redo.[ch]
+into your own project and use it directly.
+
+
+DOCUMENTATION
+
+The file libredo.html describes the library's API and how it is used.
+(The same document is also made available as a man page, and a plain
+text file.) In addition, the header file comments also provide brief
+descriptions of each function call.
+
+There is also an example program included (sokoban-example) which
+provides a practical demonstration of the full API.
+
+
+COPYRIGHT AND LICENSE
+
+Copyright (C) 2013-2020 Brian Raiter.
+
+These programs are free software; you can redistribute them and/or
+modify them under the terms of the GNU General Public License as
+published by the Free Software Foundation; either version 2 of the
+License, or (at your option) any later version. These programs are
+distributed in the hope that they will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License,
+included in this distribution in the file COPYING, for more details.
+
+
+FURTHER RESOURCES
+
+The home page for libredo is located at:
+
+  http://www.muppetlabs.com/~breadbox/software/libredo.html
 
 Bug reports and general feedback should be directed to the author at
-<breadbox@muppetlabs.com>. If you use this library in your own code,
-consider dropping me a line to let me know. (You should also let me
-know if you tried to use this library in your code, but it didn't do
-what you needed!)
+the address below. If you use this library in your own code, consider
+dropping me a line to let me know. (You should also let me know if you
+tried to use this library in your code, but it didn't do what you
+needed.)
 
 Happy coding.
 
 
 Brian Raiter
-<http://www.muppetlabs.com/~breadbox/software/libredo.html>
+<breadbox@muppetlabs.com>
