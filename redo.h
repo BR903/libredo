@@ -14,9 +14,9 @@
 extern "C" {
 #endif
 
-/* The library version: 0.8
+/* The library version: 0.9
  */
-#define REDO_LIBRARY_VERSION 0x0008
+#define REDO_LIBRARY_VERSION 0x0009
 
 /*
  * Types.
@@ -37,12 +37,13 @@ struct redo_position {
     redo_position *better;      /* position equal to this one in fewer moves */
     unsigned short movecount;   /* number of moves to reach this position */
     unsigned short solutionsize; /* size of best solution from this position */
-    unsigned short nextcount:12; /* number of moves in next list */
-    unsigned short endpoint:1;  /* true if this position is an endpoint */
-    unsigned short setbetter:1; /* internal: set by redo_checkequivlater */
-    unsigned short inuse:1;     /* internal: false if not in the tree */
-    unsigned short inarray:1;   /* internal: false at the end of the array */
-    unsigned short hashvalue;   /* internal: the state hash value */
+    unsigned short nextcount;   /* number of moves in next list */
+    signed char endpoint;       /* non-zero if this position is an endpoint */
+    signed char solutionend;    /* endpoint for best solution from here */
+    unsigned int hashvalue:16;  /* internal: the state hash value */
+    unsigned int setbetter:1;   /* internal: set by redo_checkequivlater */
+    unsigned int inuse:1;       /* internal: false if not in the tree */
+    unsigned int inarray:1;     /* internal: false at the end of the array */
 };
 
 /* A labeled branch in the tree of visited states.
@@ -72,7 +73,7 @@ extern redo_session *redo_beginsession(void const *initialstate,
 
 /* Possible values for the grafting argument to redo_setgraftbehavior().
  */
-enum { redo_nograft, redo_graft, redo_copypath, redo_graftandcopy };
+enum { redo_nograft = 0, redo_graft, redo_copypath, redo_graftandcopy };
 
 /* Change the grafting behavior option. This option controls what
  * redo_addposition() does when adding a position that provides a
@@ -109,17 +110,18 @@ extern void const *redo_getsavedstate(redo_position const *position);
  */
 extern redo_position *redo_getnextposition(redo_position *position, int move);
 
+
 /* Possible values for the checkequiv argument to redo_addposition().
  */
-enum { redo_nocheck, redo_check, redo_checklater };
+enum { redo_nocheck = 0, redo_check, redo_checklater };
 
 /* Return a position in the session, obtained by starting at prev and
  * making the given move. If this position already exists, it is
  * returned. Otherwise, a new position is created and added to the
  * session. state points to a buffer containing the representation of
- * the state for the new position. endpoint is true if this state is a
- * valid solution state. checkequiv can take one of three values. If
- * its value is redo_check, then the function will identify other
+ * the state for the new position. endpoint is non-zero if this
+ * position is a final state. checkequiv can take one of three values.
+ * If its value is redo_check, then the function will identify other
  * positions in the session that have identical states, and if any are
  * found the position's better field will be initialized (or, if the
  * newly created position is actually the other node's better, the

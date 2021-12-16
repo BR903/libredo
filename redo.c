@@ -12,6 +12,17 @@
 #include <stdint.h>     /* uint32_t */
 #include "redo.h"
 
+/* There are three ways for a solution to be an improvement over what
+ * a position currently has: either the position lacks a solution, the
+ * position's solution has a lower endpoint value, or the position's
+ * solution has the same endpoint value but more total moves.
+ */
+#define isimprovedsolution(pos, end, size) \
+    ((end) != 0 && \
+        ((pos)->solutionend == 0 || \
+         (pos)->solutionend < (end) || \
+         ((pos)->solutionend == (end) && (pos)->solutionsize > (size))))
+
 /* A redo session.
  */
 struct redo_session {
@@ -466,7 +477,7 @@ static void adjustmovecount(redo_position *position, int delta)
 static void graftbranch(redo_position *dest, redo_position *src)
 {
     redo_branch *branch;
-    int n;
+    int n, e;
 
     dest->next = src->next;
     dest->nextcount = src->nextcount;
@@ -478,12 +489,17 @@ static void graftbranch(redo_position *dest, redo_position *src)
     n = dest->movecount - src->movecount;
     dest->movecount = src->movecount;
     dest->solutionsize = src->solutionsize;
+    dest->solutionend = src->solutionend;
     adjustmovecount(dest, n);
-    if (dest->solutionsize) {
+    if (src->solutionend) {
+        e = dest->solutionend;
         n = dest->solutionsize;
-        for (dest = dest->prev ; dest ; dest = dest->prev)
-            if (dest->solutionsize == 0 || dest->solutionsize > n)
-                dest->solutionsize = n;
+        for (dest = dest->prev ; dest ; dest = dest->prev) {
+            if (!isimprovedsolution(dest, e, n))
+                break;
+            dest->solutionend = e;
+            dest->solutionsize = n;
+        }
     }
 }
 
@@ -493,15 +509,19 @@ static void graftbranch(redo_position *dest, redo_position *src)
 static void recalcsolutionsize(redo_position *position)
 {
     redo_branch *branch;
-    int size;
+    int size, end;
 
     while (position) {
+        end = 0;
         size = 0;
-        for (branch = position->next ; branch ; branch = branch->cdr)
-            if (branch->p && branch->p->solutionsize)
-                if (!size || size > branch->p->solutionsize)
-                    size = branch->p->solutionsize;
+        for (branch = position->next ; branch ; branch = branch->cdr) {
+            if (branch->p && !isimprovedsolution(branch->p, end, size)) {
+                size = branch->p->solutionsize;
+                end = branch->p->solutionend;
+            }
+        }
         position->solutionsize = size;
+        position->solutionend = end;
         position = position->prev;
     }
 }
@@ -639,7 +659,7 @@ redo_position *redo_addposition(redo_session *session,
             return position;
     }
 
-    if (checkequiv == redo_check && !endpoint)
+    if (checkequiv == redo_check && endpoint == 0)
         equiv = checkforequiv(session, state);
     else
         equiv = NULL;
@@ -663,15 +683,19 @@ redo_position *redo_addposition(redo_session *session,
     position->nextcount = 0;
 
     position->movecount = prev ? prev->movecount + 1 : 0;
-    position->solutionsize = 0;
     if (endpoint) {
         size = position->movecount;
+        position->solutionend = endpoint;
         position->solutionsize = size;
         for (p = position->prev ; p ; p = p->prev) {
-            if (p->solutionsize && p->solutionsize <= size)
-                break;
-            p->solutionsize = size;
+            if (isimprovedsolution(p, endpoint, size)) {
+                p->solutionend = endpoint;
+                p->solutionsize = size;
+            }
         }
+    } else {
+        position->solutionend = 0;
+        position->solutionsize = 0;
     }
 
     if (equiv) {
@@ -754,12 +778,13 @@ int redo_duplicatepath(redo_session *session,
     redo_branch *branch;
     redo_position *next;
 
-    if (src->solutionsize == 0)
+    if (!src->solutionend)
         return 0;
 
-    while (src && src->solutionsize) {
+    while (src && src->solutionend) {
         for (branch = src->next ; branch ; branch = branch->cdr)
-            if (branch->p && branch->p->solutionsize == src->solutionsize)
+            if (branch->p && branch->p->solutionend == src->solutionend
+                          && branch->p->solutionsize == src->solutionsize)
                 break;
         if (!branch)
             break;
