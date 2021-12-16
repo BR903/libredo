@@ -1,4 +1,4 @@
-libredo / Redo Library / Mar 2020 / a state history management library
+libredo / Redo Library / Dec 2021 / a state history management library
 
 .Synopsis
 libredo is a simple library that makes it easy to add powerful undo
@@ -41,8 +41,7 @@ involve rearranging or altering elements of a well-defined system, and
 there are a certain set of features that often arise:
 
 .list
-. There is a well-defined initial state, and one or more solution
-states.
+. There is a well-defined initial state, and one or more final states.
 . There is no hidden information, which would reduce the desirability
 of giving the user an undo/redo facility in the first place. (For
 example, the solitaire game Klondike would not be a good candidate,
@@ -58,9 +57,10 @@ amount of space, making it feasible to maintain an unabridged move
 history in memory.
 . The main challenge to the user is to solve the puzzle -- but after
 that, there is usually a secondary challenge of trying to improve
-one's solution, typically by solving it in fewer steps. (A logic
-puzzle with only one possible solution path would therefore likely not
-find this library useful.)
+one's solution, typically by solving it in fewer steps. (Thus, a logic
+puzzle with only one possible solution path might not find this
+library as useful, since the solver would not be expected to be doing
+an extensive search of the puzzle's solution space.)
 
 Sokoban is a good example of a program that has all of these features.
 There are only four possible actions (up, down, left, and right), and
@@ -270,15 +270,25 @@ point.
 . If this field is not `NULL`, it points to another position in the
 session history that has the same game state as this one, but in fewer
 moves.
-. `unsigned~short~!endpoint!`
-. This field is non-zero if this position is a solution state. It is
-set by the caller via `redo_addposition()`.
+. `signed~char~!endpoint!`
+. This field is zero if it is possible to make further moves from this
+position. Otherwise, this position is marked as a final state. It is
+set by the caller via `redo_addposition()`. The caller can set
+different values for different types of final states, in which case
+the library will treat solution endpoints with higher values as being
+preferable.
+. `signed~char~!solutionend!`
+. This field is zero if there are no valid solution paths that pass
+through this position. Otherwise, it holds the endpoint value assigned
+to the solution's final position. If more than one solution path
+passes through this position, then `solutionend` holds the highest of
+the `endpoint` values.
 . `unsigned~short~!solutionsize!`
 . This field is zero if there are no valid solution paths that pass
 through this position. Otherwise, it holds the total length of the
 solution path. If more than one solution path passes through this
-position, then `solutionsize` holds the length of the shortest
-such path.
+position with the same `endpoint` value, then `solutionsize` holds the
+length of the shortest such path.
 
 .subsection `!redo_branch!`
 
@@ -399,11 +409,16 @@ position's state. The library will make a copy of this data, so the
 calling program is free to reuse or deallocate the buffer after
 `redo_addposition()` returns.
 
-A true value for `endpoint` indicates that the new position being
-created is a solution state. In this case, the path ending in the
-newly created position will be marked as being a solution. The
-`solutionsize` field will be set, not just in the returned position
-but potentially in all positions along the solution path.
+A non-zero value for `endpoint` indicates that the new position being
+created is a final state, i.e. a "solution state". In this case, the
+path ending in the newly created position will be marked as being a
+solution. The `solutionend` and `solutionsize` fields will be set, not
+just in the returned position but in all positions along the solution
+path. The caller can provide multiple non-zero values for different
+endpoints, in which case solutions with higher `endpoint` values will
+be treated as preferable. (In the case where a state leads to multiple
+final states with equal `endpoint` values, the shorter path will be
+preferred.)
 
 The `checkequiv` argument controls how the library checks for
 identical states in the history. It can take one of three values:
@@ -436,7 +451,7 @@ behavior. See below for more details.
 .grid
 l                             l
 `int !redo_setgraftbehavior!(``redo_session *!session!,`
-                              `int !grafting!);`
+                              `int !grafting!)`
 
 `redo_setgraftbehavior()` determines the grafting behavior of
 `redo_addposition()`. The return value is the setting's value at the
