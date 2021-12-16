@@ -124,7 +124,7 @@ static void test_statecompares(void)
 
 /* Give the full API a test run for one of the grafting behaviors.
  */
-static void test_overall(int grafting)
+static void test_overall(int grafttype)
 {
     redo_position *pos1a, *pos1b, *pos1c, *pos1d, *pos2a, *pos2c,
                   *pos3a, *pos3c, *pos4a, *pos4c, *pos5a;
@@ -136,10 +136,10 @@ static void test_overall(int grafting)
 
     g = redo_setgraftbehavior(session, redo_nograft);
     assert(g == redo_graft);
-    g = redo_setgraftbehavior(session, grafting);
+    g = redo_setgraftbehavior(session, grafttype);
     assert(g == redo_nograft);
 
-    memset(sbuf, '_', sizeof sbuf);
+    memset(sbuf, '.', sizeof sbuf);
 
     /* Add a move to the root position. */
 
@@ -319,12 +319,12 @@ static void test_overall(int grafting)
      *    |____ b: pos1b
      *    |____ c: pos1c ____ c: pos2c
      *
-     * [with pos2a's better => pos1c, and pos3a's better => pos2c]
+     * [with pos2a's better -> pos1c, and pos3a's better -> pos2c]
      */
 
     /* Create a cycle and verify that redo_suppresscycle() identifies it. */
 
-    memset(sbuf, '_', sizeof sbuf);
+    memset(sbuf, '.', sizeof sbuf);
     sbuf[1] = 'a';
     pos = pos3a;
     assert(redo_suppresscycle(session, &pos, sbuf, 3));
@@ -357,7 +357,7 @@ static void test_overall(int grafting)
 
     /* Verify that a low prunelimit prevents anything from being deleted. */
 
-    memset(sbuf, '_', sizeof sbuf);
+    memset(sbuf, '.', sizeof sbuf);
     sbuf[1] = 'a';
     pos = pos3a;
     assert(redo_suppresscycle(session, &pos, sbuf, 2));
@@ -369,13 +369,13 @@ static void test_overall(int grafting)
 
     /* Verify that the session contains no solutions. */
 
-    assert(rootpos->solutionsize == 0 && !rootpos->endpoint);
-    assert(pos1a->solutionsize == 0 && !pos1a->endpoint);
-    assert(pos1b->solutionsize == 0 && !pos1b->endpoint);
-    assert(pos1c->solutionsize == 0 && !pos1c->endpoint);
-    assert(pos2a->solutionsize == 0 && !pos2a->endpoint);
-    assert(pos2c->solutionsize == 0 && !pos2c->endpoint);
-    assert(pos3a->solutionsize == 0 && !pos3a->endpoint);
+    assert(rootpos->solutionsize == 0 && rootpos->endpoint == 0);
+    assert(pos1a->solutionsize == 0 && pos1a->endpoint == 0);
+    assert(pos1b->solutionsize == 0 && pos1b->endpoint == 0);
+    assert(pos1c->solutionsize == 0 && pos1c->endpoint == 0);
+    assert(pos2a->solutionsize == 0 && pos2a->endpoint == 0);
+    assert(pos2c->solutionsize == 0 && pos2c->endpoint == 0);
+    assert(pos3a->solutionsize == 0 && pos3a->endpoint == 0);
 
     /* Add to the C branch, including one endpoint position. */
 
@@ -385,22 +385,29 @@ static void test_overall(int grafting)
     pos3c = redo_addposition(session, pos2c, 'c', sbuf, 0, redo_check);
     assert(pos3c);
     assert(pos3c->movecount == 3);
-    assert(!pos3c->endpoint);
+    assert(pos3c->endpoint == 0);
     sbuf[4] = 'a';
     pos4a = redo_addposition(session, pos3c, 'a', sbuf, 0, redo_check);
     assert(pos4a);
     assert(pos4a->movecount == 4);
-    assert(!pos4a->endpoint);
+    assert(pos4a->endpoint == 0);
     sbuf[4] = 'c';
     pos4c = redo_addposition(session, pos3c, 'c', sbuf, 1, redo_check);
     assert(pos4c);
     assert(pos4c->movecount == 4);
-    assert(pos4c->endpoint);
+    assert(pos4c->endpoint == 1);
     assert(pos3c->nextcount == 2);
     assert(redo_clearsessionchanged(session));
     assert(redo_getsessionsize(session) == 10);
 
     /* Verify that the entire solution path is marked (and nothing else). */
+
+    assert(pos3c->solutionend == 1);
+    assert(pos2c->solutionend == 1);
+    assert(pos1c->solutionend == 1);
+    assert(rootpos->solutionend == 1);
+    assert(pos1a->solutionend == 0);
+    assert(pos4a->solutionend == 0);
 
     assert(pos3c->solutionsize == 4);
     assert(pos2c->solutionsize == 4);
@@ -415,19 +422,25 @@ static void test_overall(int grafting)
     sbuf[5] = 'a';
     pos5a = redo_addposition(session, pos4a, 'a', sbuf, 1, redo_check);
     assert(pos5a);
-    assert(pos5a->endpoint);
+    assert(pos5a->endpoint == 1);
     assert(pos5a->movecount == 5);
+    assert(pos5a->solutionend == 1);
     assert(pos5a->solutionsize == 5);
+    assert(pos4a->solutionend == 1);
     assert(pos4a->solutionsize == 5);
+    assert(pos3c->solutionend == 1);
     assert(pos3c->solutionsize == 4);
+    assert(rootpos->solutionend == 1);
     assert(rootpos->solutionsize == 4);
     assert(redo_clearsessionchanged(session));
     assert(redo_getsessionsize(session) == 11);
 
     /* Copy the (shorter) solution path proceeding from pos1c to pos2a. */
 
+    assert(pos2a->solutionend == 0);
     assert(pos2a->solutionsize == 0);
     redo_duplicatepath(session, pos2a, pos1c);
+    assert(pos2a->solutionend == 1);
     assert(pos2a->solutionsize == 5);
     assert(pos2a->nextcount == 2);
     assert(redo_getnextposition(pos2a, 'c') != NULL);
@@ -448,7 +461,7 @@ static void test_overall(int grafting)
 
     /* Add a new position off of rootpos that's equivalent to pos3c. */
 
-    memset(sbuf, '_', sizeof sbuf);
+    memset(sbuf, '.', sizeof sbuf);
     sbuf[1] = 'c';
     sbuf[2] = 'c';
     sbuf[3] = 'c';
@@ -463,14 +476,17 @@ static void test_overall(int grafting)
 
     /* Verify that the requested grafting behavior was correctly applied. */
 
-    switch (grafting) {
+    switch (grafttype) {
 
         /* No graft: the moves underneath pos3c remain there. */
 
       case redo_nograft:
         assert(pos1d->better == NULL);
+        assert(rootpos->solutionend == 1);
         assert(rootpos->solutionsize == 4);
+        assert(pos3c->solutionend == 1);
         assert(pos3c->solutionsize == 4);
+        assert(pos1d->solutionend == 0);
         assert(pos1d->solutionsize == 0);
         assert(pos3c->next != NULL);
         assert(pos3c->nextcount == 2);
@@ -483,9 +499,13 @@ static void test_overall(int grafting)
 
       case redo_graft:
         assert(pos1d->better == NULL);
+        assert(rootpos->solutionend == 1);
         assert(rootpos->solutionsize == 2);
+        assert(pos1d->solutionend == 1);
         assert(pos1d->solutionsize == 2);
+        assert(pos1c->solutionend == 0);
         assert(pos1c->solutionsize == 0);
+        assert(pos3c->solutionend == 0);
         assert(pos3c->solutionsize == 0);
         assert(pos3c->next == NULL);
         assert(pos3c->nextcount == 0);
@@ -502,9 +522,13 @@ static void test_overall(int grafting)
 
       case redo_copypath:
         assert(pos1d->better == NULL);
+        assert(rootpos->solutionend == 1);
         assert(rootpos->solutionsize == 2);
+        assert(pos1d->solutionend == 1);
         assert(pos1d->solutionsize == 2);
+        assert(pos1c->solutionend == 1);
         assert(pos1c->solutionsize == 4);
+        assert(pos3c->solutionend == 1);
         assert(pos3c->solutionsize == 4);
         assert(pos3c->next != NULL);
         assert(pos3c->nextcount == 2);
@@ -515,7 +539,7 @@ static void test_overall(int grafting)
         assert(pos1d->next != NULL);
         assert(pos1d->next->move == 'c');
         assert(pos1d->next->p != pos4a);
-        assert(pos1d->next->p->endpoint);
+        assert(pos1d->next->p->endpoint == 1);
         assert(redo_getsessionsize(session) == 16);
         break;
 
@@ -523,14 +547,18 @@ static void test_overall(int grafting)
 
       case redo_graftandcopy:
         assert(pos1d->better == NULL);
+        assert(rootpos->solutionend == 1);
         assert(rootpos->solutionsize == 2);
+        assert(pos1d->solutionend == 1);
         assert(pos1d->solutionsize == 2);
+        assert(pos1c->solutionend == 1);
         assert(pos1c->solutionsize == 4);
+        assert(pos3c->solutionend == 1);
         assert(pos3c->solutionsize == 4);
         assert(pos3c->next != NULL);
         assert(pos3c->nextcount == 1);
         assert(pos3c->next->p != pos4a);
-        assert(pos3c->next->p->endpoint);
+        assert(pos3c->next->p->endpoint == 1);
         assert(pos1d->next != NULL);
         assert(pos1d->nextcount == 2);
         pos = redo_getnextposition(pos1d, 'a');
@@ -544,6 +572,123 @@ static void test_overall(int grafting)
     teardown();
 }
 
+/* Verify that solution propogation correctly respects endpoint value
+ * as well as solution size.
+ */
+static void test_endpoints(void)
+{
+    redo_position *pos1a, *pos2a, *pos2c,
+                  *pos3a, *pos3b, *pos3c, *pos4b, *pos4c;
+    redo_position *pos;
+
+    setup();
+    assert(redo_getsessionsize(session) == 1);
+    redo_setgraftbehavior(session, redo_graft);
+    memset(sbuf, '.', sizeof sbuf);
+
+    /* Build up a small tree of moves to work from. */
+
+    sbuf[0] = '1';
+    sbuf[1] = 'a';
+    pos1a = redo_addposition(session, rootpos, 'a', sbuf, 0, redo_check);
+    sbuf[0] = '2';
+    pos2a = redo_addposition(session, pos1a, 'a', sbuf, 0, redo_check);
+    sbuf[0] = '3';
+    pos3a = redo_addposition(session, pos2a, 'a', sbuf, 0, redo_check);
+    sbuf[1] = 'b';
+    pos3b = redo_addposition(session, pos2a, 'b', sbuf, 0, redo_check);
+    sbuf[0] = '4';
+    pos4b = redo_addposition(session, pos3b, 'b', sbuf, 0, redo_check);
+    sbuf[0] = '2';
+    sbuf[1] = 'c';
+    pos2c = redo_addposition(session, pos1a, 'c', sbuf, 0, redo_check);
+    sbuf[0] = '3';
+    pos3c = redo_addposition(session, pos2c, 'c', sbuf, 0, redo_check);
+    sbuf[0] = '4';
+    pos4c = redo_addposition(session, pos3c, 'c', sbuf, 0, redo_check);
+
+    /* Verify that the current session tree contains no solutions. */
+
+    assert(redo_getsessionsize(session) == 9);
+    assert(rootpos && rootpos->solutionend == 0);
+    assert(pos3a && pos3a->solutionend == 0);
+    assert(pos4b && pos4b->solutionend == 0);
+    assert(pos4c && pos4c->solutionend == 0);
+
+    /*
+     * The session tree now has three branches, with no endpoints:
+     *
+     * root ___ a: pos1a ___ a: pos2a ___ a: pos3a
+     *                 |            |____ b: pos3b ___ b: pos4b
+     *                 |____ c: pos2c ___ c: pos3c ___ c: pos4c
+     */
+
+    sbuf[0] = 'E';
+
+    /* Verify that negative endpoints are recognized. */
+
+    redo_addposition(session, pos4c, 'X', sbuf, -1, redo_check);
+    assert(rootpos->solutionend == -1);
+    assert(rootpos->solutionsize == 5);
+
+    /* Verify that higher endpoint values get preference. */
+
+    redo_addposition(session, pos4b, 'X', sbuf, 2, redo_check);
+    assert(rootpos->solutionend == 2);
+    assert(rootpos->solutionsize == 5);
+    redo_addposition(session, pos4b, 'Y', sbuf, 3, redo_check);
+    assert(rootpos->solutionend == 3);
+    assert(rootpos->solutionsize == 5);
+    redo_addposition(session, pos4b, 'Z', sbuf, 1, redo_check);
+    assert(rootpos->solutionend == 3);
+    assert(rootpos->solutionsize == 5);
+
+    /* Verify that endpoint value takes priority over move count. */
+
+    redo_addposition(session, pos3a, 'X', sbuf, 2, redo_check);
+    assert(rootpos->solutionend == 3);
+    assert(rootpos->solutionsize == 5);
+
+    /* Verify that each branch tracks its own local best solution. */
+
+    assert(pos3a->solutionend == 2);
+    assert(pos3a->solutionsize == 4);
+    assert(pos3b->solutionend == 3);
+    assert(pos3b->solutionsize == 5);
+    assert(pos3c->solutionend == -1);
+    assert(pos3c->solutionsize == 5);
+
+    /* Verify that grafting updates all solutionend values correctly. */
+
+    sbuf[0] = '4';
+    sbuf[1] = 'b';
+    assert(pos2c->solutionend == -1);
+    assert(pos2c->solutionsize == 5);
+    assert(pos4b->better == NULL);
+    pos = redo_addposition(session, pos2c, 'd', sbuf, 0, redo_check);
+    assert(pos4b->better == pos);
+    assert(pos2c->solutionend == 3);
+    assert(pos2c->solutionsize == 4);
+    assert(pos3c->solutionend == -1);
+    assert(pos3c->solutionsize == 5);
+
+    /* Verify that a lower-valued endpoint graft doesn't propagate. */
+
+    sbuf[0] = '4';
+    sbuf[1] = 'c';
+    assert(pos1a->solutionend == 3);
+    assert(pos1a->solutionsize == 4);
+    assert(pos4c->better == NULL);
+    pos = redo_addposition(session, pos1a, 'e', sbuf, 0, redo_check);
+    assert(pos4c->better == pos);
+    assert(pos->solutionend == -1);
+    assert(pos->solutionsize == 3);
+    assert(pos1a->solutionend == 3);
+    assert(pos1a->solutionsize == 4);
+
+    teardown();
+}
+
 int main(void)
 {
     test_init();
@@ -552,5 +697,6 @@ int main(void)
     test_overall(redo_graft);
     test_overall(redo_copypath);
     test_overall(redo_graftandcopy);
+    test_endpoints();
     return 0;
 }
