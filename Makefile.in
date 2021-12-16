@@ -2,10 +2,11 @@
 #
 # The list of symbolic targets:
 #
-# make [all]     = build the library, unit tests, and the example program
+# make [all]     = build the library, unit tests, example, and man page
 # make check     = build and run the unit tests
 # make example   = build the example program (requires ncurses)
-# make install   = install the library and header file
+# make docs      = build the man page
+# make install   = install the library, header file, and man page
 # make clean     = delete files created by the build process
 # make distclean = delete files created by the build and configure processes
 # make dist      = create the source distribution package
@@ -63,10 +64,10 @@ install: libredo.a libredo.3
 clean:
 	rm -f libredo.a redo-tests sokoban-example
 	rm -f redo.o redo-tests.o sokoban-example.o
-	rm -f libredo.html libredo.3 libredo.txt
 
 distclean: clean
 	rm -rf autom4te.cache config.log config.status Makefile
+	rm -f libredo.html libredo.txt
 
 dist:
 	rm -f libredo-$(VERSION).tar.gz
@@ -111,13 +112,13 @@ endif
 
 # The documentation
 
-docs: libredo.3 libredo.html
+docs: libredo.3
 
-libredo.3: libredo.doc mkdocs
-	perl mkdocs --man $<
+libredo.3: libredo.doc mkdocs.py
+	./mkdocs.py --man=$@ $<
 
-libredo.html: libredo.doc mkdocs
-	perl mkdocs --html $<
+libredo.html: libredo.doc mkdocs.py
+	./mkdocs.py --html=$@ $<
 
-libredo.txt: libredo.doc mkdocs
-	perl mkdocs --text $<
+libredo.txt: libredo.doc mkdocs.py
+	./mkdocs.py --text=$@ $<

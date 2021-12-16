@@ -1,5 +1,4 @@
 COPYING
-INSTALL
 MANIFEST
 NEWS
 Makefile.in
@@ -7,8 +6,9 @@ README
 configure.ac
 configure
 install-sh
+libredo.3
 libredo.doc
-mkdocs
+mkdocs.py
 redo.c
 redo.h
 redo-tests.c
