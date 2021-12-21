@@ -1,4 +1,16 @@
 
+* version 0.9: 2021 Dec 21
+
+The endpoint flag has been changed to allow callers to specify
+multiple types of endpoints. The endpoint value, instead of a boolean,
+can be any non-zero value between -128 and +127. Higher endpoint
+values indicate preferred solutions.
+
+The documentation build process has been updated. In addition, a
+pre-built man page is included in the distribution, so that building
+the docs is optional for most users.
+
+
 * version 0.8: 2020 Mar 13
 
 Function redo_updatesavedstate() has been added to the API to allow

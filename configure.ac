@@ -1,7 +1,7 @@
 dnl * configure.ac: the input file to autoconf.
 dnl *
 
-AC_INIT([libredo], [0.8], [breadbox@muppetlabs.com], [libredo],
+AC_INIT([libredo], [0.9], [breadbox@muppetlabs.com], [libredo],
         [http://www.muppetlabs.com/~breadbox/software/libredo.html])
 AC_CONFIG_SRCDIR([redo.c])
 
